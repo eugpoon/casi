@@ -1,6 +1,7 @@
 # This file may be used to create an environment using:
 # $ conda create --name <env> --file <this file>
 # platform: osx-arm64
+# created-by: conda 25.1.1
 anyio=4.8.0=pyhd8ed1ab_0
 appnope=0.1.4=pyhd8ed1ab_1
 argon2-cffi=23.1.0=pyhd8ed1ab_1
@@ -22,7 +23,7 @@ bzip2=1.0.8=h99b78c6_7
 ca-certificates=2025.1.31=hf0a4a13_0
 cached-property=1.5.2=hd8ed1ab_1
 cached_property=1.5.2=pyha770c72_1
-certifi=2024.12.14=pyhd8ed1ab_0
+certifi=2025.1.31=pyhd8ed1ab_0
 cffi=1.17.1=py313hc845a76_0
 charset-normalizer=3.4.1=pyhd8ed1ab_0
 cleanipynb=0.4.2=pypi_0
@@ -120,7 +121,7 @@ notebook=7.3.2=pyhd8ed1ab_0
 notebook-shim=0.2.4=pyhd8ed1ab_1
 numpy=2.2.2=py313h41a2e72_0
 openjpeg=2.5.3=h8a3d83b_0
-openssl=3.4.0=h81ee809_1
+openssl=3.4.1=h81ee809_0
 overrides=7.7.0=pyhd8ed1ab_1
 packaging=24.2=pyhd8ed1ab_2
 pandas=2.2.3=py313h47b39a6_1
