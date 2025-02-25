@@ -19,10 +19,11 @@ month_dict = {m: calendar.month_name[m].upper()[0] for m in range(1, 13)}
 hist = (1961, 1990) # Historical range
 temporal_res = ['daily', 'monthly_avg', 'annual_avg'][0] # Temporal resolution 
 variables = ['pr_', 'tasmax_']
-# Comparative operators
-comp_ops = {'<': operator.lt, '<=': operator.le,
-            '>': operator.gt, '>=': operator.ge,
-           }
+
+comp_ops = { # Comparative operators
+    '<': operator.lt, '<=': operator.le,
+    '>': operator.gt, '>=': operator.ge,
+}
 
 
 def get_files(center: str, variables: list = None):
@@ -34,7 +35,8 @@ def get_files(center: str, variables: list = None):
         variables: optional list of variables to filter files (default: None)
     '''
     return [os.path.join(center, f) for f in os.listdir(center) 
-            if center in f and f.endswith('.csv') and any(v in f for v in variables)]
+            if center in f and f.endswith('.csv') and temporal_res in f
+            and any(v in f for v in variables)]
 
 
 def preprocess_file(filename: str, is_hist: bool, percentiles:dict):
@@ -56,16 +58,13 @@ def preprocess_file(filename: str, is_hist: bool, percentiles:dict):
     df = df.set_index('date')
     
     if name[1] in ['pr']:
-        # Convert to ml/day
-        df = df * 86400
+        df = df * 86400 # Convert to ml/day
         # Calculate monthly mean per year while keeping original df dimensions
         if event == 'CDHE':
             df = df.groupby(df.index.strftime('%Y-%m')).transform('mean')
     
-    
     if name[1] in ['tasmax', 'tas']:
-        # Convert Kelvin to Celsius for temperature data
-        df = df - 273.15
+        df = df - 273.15 # Convert Kelvin to Celsius
 
     if is_hist:
         # Calculate percentiles for each model
@@ -76,6 +75,7 @@ def preprocess_file(filename: str, is_hist: bool, percentiles:dict):
     else: 
         df = df[df.index.month.isin(months)]        
         return ('_'.join(name[1:3]), df.add_suffix(f'_{name[1]}'))
+
 
 def add_compound_flag(hist_df:pd.DataFrame, ssp_df:pd.DataFrame, percentiles:dict):
     '''
@@ -97,10 +97,11 @@ def add_compound_flag(hist_df:pd.DataFrame, ssp_df:pd.DataFrame, percentiles:dic
             flag.append(ssp_df[f'{model}_{var}_{op}_{p}'].to_list())
         
             # Calculate diff
-            ssp_df[f'{model}_{var}_diff'] = ssp_df[f'{model}_{var}'] - perc
+            # ssp_df[f'{model}_{var}_diff'] = ssp_df[f'{model}_{var}'] - perc
         
         ssp_df[f'{model}_compound'] = np.all(flag, axis=0)
     return ssp_df
+
 
 def process_data(files, percentiles):
     """
@@ -133,9 +134,11 @@ def process_data(files, percentiles):
     
     return hist_df, ssp_dfs
 
+
 def max_consecutive(s):
     # Calculate consecutive Trues    
     return (s * (s.groupby((s != s.shift()).cumsum()).cumcount() + 1)).max()
+
 
 def get_data(dfs:dict, suffix:str, agg:str, duration:bool=False):
     dict_df = {}
@@ -156,56 +159,46 @@ def main(center_, event_, months_):
     event = event_
     months = months_
 
+    # Percentile thresholds
     if event == 'CDHE':
         pr_op, tm_op = '<', '>'
         thresholds = [
-            {'pr': [pr_op, 0.5], 'tasmax': [tm_op, 0.75]},
+            {'pr': [pr_op, 0.5], 'tasmax': [tm_op, 0.90]}, # base
+            {'pr': [pr_op, 0.5], 'tasmax': [tm_op, 0.75]}, # least severe
             {'pr': [pr_op, 0.4], 'tasmax': [tm_op, 0.80]},
             {'pr': [pr_op, 0.3], 'tasmax': [tm_op, 0.85]},
             {'pr': [pr_op, 0.2], 'tasmax': [tm_op, 0.90]},
-            {'pr': [pr_op, 0.1], 'tasmax': [tm_op, 0.95]},
+            {'pr': [pr_op, 0.1], 'tasmax': [tm_op, 0.95]}, # most severe
         ]
     elif event == 'CWHE':
         pr_op, tm_op = '>', '>'
         thresholds = [
-            {'pr': [pr_op, 0.5], 'tasmax': [tm_op, 0.75]},
+            {'pr': [pr_op, 0.5], 'tasmax': [tm_op, 0.90]}, # base
+            {'pr': [pr_op, 0.5], 'tasmax': [tm_op, 0.75]}, # least severe
             {'pr': [pr_op, 0.6], 'tasmax': [tm_op, 0.80]},
             {'pr': [pr_op, 0.7], 'tasmax': [tm_op, 0.85]},
             {'pr': [pr_op, 0.8], 'tasmax': [tm_op, 0.90]},
-            {'pr': [pr_op, 0.9], 'tasmax': [tm_op, 0.95]},
+            {'pr': [pr_op, 0.9], 'tasmax': [tm_op, 0.95]}, # most severe
         ]
     else: 
         raise ValueError("Invalid event type")
 
-    percentiles = {
-        'pr': [pr_op, 0.5], # 50th percentile for precipitation
-        'tasmax': [tm_op, 0.9] # 90th percentile for maximum temperature
-    }
-
-    files = sorted([f for f in get_files(center, variables) if temporal_res in f])
+    files = sorted([f for f in get_files(center, variables)])
     files = {key: [f for f in files if key in f] for key in ['historical', 'ssp']}
-    hist_df, ssp_dfs = process_data(files, percentiles)
-    pr = get_data(ssp_dfs, f'_pr$', 'mean')
-    tm = get_data(ssp_dfs, f'_tasmax$', 'mean')
-    comp_sum = get_data(ssp_dfs, f'_compound$', 'sum')
-    duration = get_data(ssp_dfs, f'_compound$', 'mean', True)
-
-    thres_dfs = {}
-    hist_dfs = {}
+    
+    dfs, hist, frequency, duration, pr, tm = {}, {}, {}, {}, {}, {}
     for threshold in thresholds:
         name = '_'.join([f'{v}{c}{p}' for v, (c, p) in threshold.items()])
-        hist_dfs[name], thres_dfs[name] = process_data(files, threshold)
-
-    # Total Compound Days
-    comp_thres_dfs = {}
-    dura_thres_dfs = {}
-    for threshold, dfs in thres_dfs.items():
-        comp_thres_dfs[threshold] = get_data(dfs, f'_compound$', 'sum', False)
-        dura_thres_dfs[threshold] = get_data(dfs, f'_compound$', 'mean', True)
+        hist[name], dfs[name] = process_data(files, threshold)
         
-    return hist_df, ssp_dfs, pr, tm, comp_sum, duration, comp_thres_dfs, dura_thres_dfs, hist_dfs
+        frequency[name] = get_data(dfs[name], f'_compound$', 'sum', False)
+        duration[name] = get_data(dfs[name], f'_compound$', 'mean', True)
+        pr[name] = get_data(dfs[name], f'_pr$', 'mean', False)
+        tm[name] = get_data(dfs[name], f'_tasmax$', 'mean', False)
+        
+    return dfs, hist, frequency, duration, pr, tm
 
 if __name__ == "__main__":
     
     results = main(center, event, months)
-    hist_df, ssp_dfs, pr, tm, comp_sum, duration, comp_thres_dfs, dura_thres_dfs, hist_dfs = results
+    dfs, hist, frequency, duration, pr, tm = results
