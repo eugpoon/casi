@@ -87,13 +87,11 @@ def add_compound_flag(hist_df, ssp_df, percentiles):
     '''Returns SSP dataframe with added compound flag based on historical percentiles'''
     df = ssp_df[['date', 'ssp']]
     for model in hist_df.index:
-        flag = []
         for var, (op, p) in percentiles.items():
-            perc = hist_df[f'{var}_{op}_{p}'].loc[model] # percentile
-            ssp_values = ssp_df[f'{model}_{var}'].to_list() # projected
-            df[f'{model}_{var}_{op}_{p}'] = COMP_OPS[op](ssp_values, perc) # compare
-            flag.append(df[f'{model}_{var}_{op}_{p}'].to_list())
-        df[f'{model}_compound'] = np.all(flag, axis=0)
+            perc = hist_df[f'{var}_{op}_{p}'].loc[model]
+            df[f'{model}_{var}_{op}_{p}'] = COMP_OPS[op](ssp_df[f'{model}_{var}'], perc)
+        df[f'{model}_compound'] = np.all(df[[f'{model}_{var}_{op}_{p}' 
+                                             for var, (op, p) in percentiles.items()]], axis=1)
     return df
     
 
@@ -152,9 +150,9 @@ def main(center, event, months):
         results[name] = pd.concat(
             [comp_.apply(lambda x: x.apply(max_consecutive)).add_suffix('_duration'), 
              results[name]], axis=1)
+        
     pr = group_data(ssp_dfs, f'_pr$').mean()
     tm = group_data(ssp_dfs, f'_tasmax$').mean()
-
 
     return ssp_dfs, hist, comp, results, pr, tm
 
