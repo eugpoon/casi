@@ -12,7 +12,6 @@ global CENTER, EVENT, MONTHS
 CENTER, EVENT, MONTHS = '', '', []
 
 DATA_PATH = 'compound'
-month_dict = {m: calendar.month_name[m].upper()[0] for m in range(1, 13)}
 HIST = (1961, 1990) # Historical range
 TEMPORAL_RES = ['daily', 'monthly_avg', 'annual_avg'][0] # Temporal resolution 
 VARIABLES = ['pr_', 'tasmax_']
@@ -58,6 +57,7 @@ def preprocess_file(filename, is_hist, percentiles=None):
         # Calculate percentiles for each model
         op, p = percentiles[name[1]]
         df = df[(HIST[0] <= df.index.year) & (df.index.year <= HIST[1])]
+        # df = df.groupby(df.index.strftime('%Y-%m')).mean()
         return pd.DataFrame({f'{name[1]}_{op}_{p}': df.quantile(p)})
     else: 
         df = df[df.index.month.isin(MONTHS)]
@@ -104,9 +104,9 @@ def group_data(df, suffix):
     '''Group data based on specified criteria'''
     df_ = df.copy()
     df_.date = df_.date.dt.year
-    df_ = (df_.set_index(['ssp', 'date']).filter(regex=suffix)
+    return (df_.set_index(['ssp', 'date']).filter(regex=suffix)
            .groupby(['ssp', 'date']))
-    return df_
+
 
 def get_common_columns(dfs):
     return reduce(lambda x, y: x.intersection(y), (df.columns for df in dfs))
