@@ -13,7 +13,7 @@
 
 # V1
 - Methodology used in [Feng et al. 2020](https://www.sciencedirect.com/science/article/pii/S2212094720303121?via%3Dihub#bib17) with some changes made from 02/25/25 meeting
-- CDWE uses daily precipitation instead of monthly
+- CWHE uses daily precipitation instead of monthly
 
 
 # Others
