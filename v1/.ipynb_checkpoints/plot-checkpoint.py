@@ -45,9 +45,23 @@ def plot_ts(df, agg='mean', alpha=1):
     if plotly:
         fig = go.Figure()
         for i, ssp in enumerate(df.index.get_level_values('ssp').unique()):
-            data = df.loc[ssp].agg(agg, axis=1)
-            fig.add_trace(go.Scatter(x=data.index, y=data, name=ssp, opacity=alpha,
-                                     line=dict(color=colors[i], width=0.8), mode='lines'))
+            data = df.loc[ssp]
+            mean_data = data.agg(agg, axis=1)
+            p10 = data.quantile(0.1, axis=1)
+            p90 = data.quantile(0.9, axis=1)
+             # Add error range (with no legend entry)
+            fig.add_trace(go.Scatter(x=mean_data.index.tolist() + mean_data.index[::-1].tolist(),
+                                     y=p90.tolist() + p10[::-1].tolist(),
+                                     fill='toself', fillcolor=colors[i],
+                                     line=dict(color='rgba(255,255,255,0)'), hoverinfo='skip',
+                                     showlegend=False, legendgroup=ssp, opacity=0.2))
+            fig.add_trace(go.Scatter(x=mean_data.index, y=mean_data, name=ssp, mode='lines',
+                                     line=dict(color=colors[i], width=0.8), opacity=alpha,
+                                     legendgroup=ssp))
+            
+            # fig.add_trace(go.Scatter(x=agg_data.index, y=agg_data, name=ssp, opacity=alpha,
+            #                          line=dict(color=colors[i], width=0.8), mode='lines'))
+
         fig.update_layout(title=title, xaxis_title='Year', yaxis_title=title_var,
                           width=1000, height=300, margin=dict(l=20, r=20, t=30, b=20),
                           paper_bgcolor='white', plot_bgcolor='white',
@@ -64,6 +78,20 @@ def plot_ts(df, agg='mean', alpha=1):
         plt.legend(loc='center left', bbox_to_anchor=(1, 1))
         plt.tight_layout()
         plt.show()
+        for i, ssp in enumerate(df.index.get_level_values('ssp').unique()):
+            data = df.loc[ssp]
+            agg_data = data.agg(agg, axis=1)
+            p10 = data.quantile(0.1, axis=1)
+            p90 = data.quantile(0.9, axis=1)
+            
+            sns.lineplot(data=agg_data, label=ssp, color=colors[i], linewidth=0.8, alpha=alpha)
+            plt.fill_between(agg_data.index, p10, p90, color=colors[i], alpha=0.1)
+            plt.title(title)
+            plt.xlabel('Year')
+            plt.ylabel(title_var)
+            plt.legend(loc='center left', bbox_to_anchor=(1, 1))
+            plt.tight_layout()
+            plt.show()
 
 def plot_severity(results, ssps, var, agg='mean', alpha=1):
     if plotly:
@@ -72,15 +100,28 @@ def plot_severity(results, ssps, var, agg='mean', alpha=1):
 
         for i, ssp in enumerate(ssps, start=1):
             for j, (threshold, df) in enumerate(results.items()):
-                ssp_data = check_df(df[df.index.get_level_values(0) == ssp])
-                fig.add_trace(
-                    go.Scatter(x=ssp_data.index.get_level_values(1), 
-                               y=ssp_data.agg(agg, axis=1), name=threshold,
-                               line=dict(color=colors[j % len(colors)], width=0.8),
-                               mode='lines', opacity=alpha,
-                               legendgroup=threshold, showlegend=(i == 1)),
-                    row=i, col=1
-                )
+                data = check_df(df[df.index.get_level_values(0) == ssp])
+                mean_data = data.agg(agg, axis=1)
+                p10 = data.quantile(0.1, axis=1)
+                p90 = data.quantile(0.9, axis=1)
+
+                # Add error range
+                fig.add_trace(go.Scatter(
+                    x=(mean_data.index.get_level_values(1).tolist() + 
+                       mean_data.index.get_level_values(1)[::-1].tolist()),
+                    y=p90.tolist() + p10[::-1].tolist(), showlegend=False, legendgroup=threshold,
+                    fill='toself', fillcolor=colors[j % len(colors)], opacity=0.2, 
+                    line=dict(color='rgba(255,255,255,0)'), hoverinfo='skip'), row=i, col=1)
+                
+                fig.add_trace(go.Scatter(
+                    x=mean_data.index.get_level_values(1), y=mean_data, name=threshold,
+                    line=dict(color=colors[j % len(colors)], width=0.8), mode='lines',
+                    opacity=alpha, legendgroup=threshold, showlegend=(i == 1)), row=i, col=1)
+                
+                # fig.add_trace(go.Scatter(
+                #     x=data.index.get_level_values(1), y=data.agg(agg, axis=1), name=threshold,
+                #     line=dict(color=colors[j % len(colors)], width=0.8), mode='lines',
+                #     opacity=alpha, legendgroup=threshold, showlegend=(i == 1)), row=i, col=1)
 
         fig.update_layout(title='Severity Comparison: '+title, width=1000, height=200*len(ssps),
                           margin=dict(l=50, r=20, t=120, b=50),
@@ -105,10 +146,17 @@ def plot_severity(results, ssps, var, agg='mean', alpha=1):
         for i, ssp in enumerate(ssps):
             ax = axes[i] if len(ssps) > 1 else axes
             for j, (threshold, df) in enumerate(results.items()):
-                ssp_data = check_df(df[df.index.get_level_values(0) == ssp])
-                line = sns.lineplot(x=ssp_data.index.get_level_values(1), y=ssp_data.agg(agg, axis=1), 
+                data = check_df(df[df.index.get_level_values(0) == ssp])
+                mean_data = data.agg(agg, axis=1)
+                p10 = data.quantile(0.1, axis=1)
+                p90 = data.quantile(0.9, axis=1)
+                
+                line = sns.lineplot(x=data.index.get_level_values(1), y=mean_data, 
                                     label=threshold, alpha=alpha, color=colors[j % len(colors)], 
                                     linewidth=0.8, ax=ax)
+                ax.fill_between(mean_data.index.get_level_values(1), p10, p90, 
+                        color=colors[j % len(colors)], alpha=0.1)
+                
                 if i == 0:
                     lines.append(line.lines[-1])
                     labels.append(threshold)
