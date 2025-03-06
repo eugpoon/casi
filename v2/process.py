@@ -13,8 +13,9 @@ warnings.filterwarnings('ignore')
 ##################################################
 
 DATA_PATH = '../compound'
-HISTORICAL_YEARS, SSP_YEARS = (1981, 2020), (2015, 2100)
-VARIABLES = ['pr_', 'tasmax_'] # original variable file names
+HISTORICAL_YEARS, SSP_YEARS = (1981, 2020), (2021, 2100)
+SPI_YEARS = (HISTORICAL_YEARS[0], SSP_YEARS[1])
+VARIABLES = ['pr_', 'tasmax_'] # original variable in file names
 
 COMP_OPS = { # Comparative operators
     '<': operator.lt, '<=': operator.le,
@@ -53,11 +54,15 @@ def validate_file_path(file_path: str) -> None:
 def read_data(filename):
     df = pd.read_csv(filename).rename(columns={'Unnamed: 0': 'date'})
     df['date'] = pd.to_datetime(df['date'])
-    return df
+    return df.sort_values('date').interpolate(method='linear', limit_direction='both')
 
-def filter_dates(df):
-    dates = df.index.get_level_values('date')
-    return df[(SSP_YEARS[0] <= dates.year) & (dates.year <= SSP_YEARS[1]) 
+def filter_dates(df, year_range:tuple, spi=False):
+    if spi: # dates in column
+        dates = pd.to_datetime(df.date).dt
+        return df[(year_range[0] <= dates.year) & (dates.year <= year_range[1])]
+    else: # dates in index
+        dates = df.index.get_level_values('date')
+        return df[(year_range[0] <= dates.year) & (dates.year <= year_range[1]) 
                 & (dates.month.isin(months))]
     
 ##################################################
@@ -73,19 +78,25 @@ def process_spi():
     # Combine historical and ssp dataframes; Convert pr to mm/day
     historical_df = read_data(historical_file)
     spi_dfs = {os.path.basename(ssp_file).split('_')[2].split('.')[0]: 
-               pd.concat([historical_df, read_data(ssp_file)], ignore_index=True)
+               filter_dates(pd.concat([historical_df, read_data(ssp_file)], ignore_index=True), 
+                            SPI_YEARS, spi=True).dropna(how='all')
                for ssp_file in ssp_files}
     
     # Calculate SPI
     for ssp_name, df in spi_dfs.items():
-        print(f'Processing {ssp_name} spi...')
-        spi_df = pd.DataFrame({'date': df['date']})
+        print(f'Processing {ssp_name} spi ({min(df.date)} - {max(df.date)})...')        
+        
         df[df.select_dtypes(include=['number']).columns] *= 86400 # Convert to mm/day
-        for col in df.columns[1:]:
+        columns = df.columns[1:]
+        
+        spi_df = pd.DataFrame({'date': df.date}).reset_index(drop=True)
+        for col in columns:
             try:
                 spi_df[f'{col}_spi'] = (
                     SPI().calculate(df, 'date', col, freq=freq, scale=scale, fit_type='lmom',
-                                    dist_type='gam').filter(regex='_calculated_index$'))
+                                    dist_type='gam').filter(regex='_calculated_index$')
+                    .reset_index(drop=True))
+                
             except Exception as e:
                 print(f'- Error calculating SPI for {col}: {e}')
                 
@@ -93,9 +104,9 @@ def process_spi():
         spi_dfs[ssp_name].columns = (spi_dfs[ssp_name].columns[:1].tolist() + 
                                      [f'{col}_pr' for col in spi_dfs[ssp_name].columns[1:]])
         spi_dfs[ssp_name] = spi_dfs[ssp_name].merge(spi_df, on='date')
-        
-    # contains pr and spi
-    return pd.concat([df.assign(ssp=ssp_name) for ssp_name, df in spi_dfs.items()]).set_index(['ssp', 'date'])
+    # Contains pr, scaled, and spi
+    return (pd.concat([df.assign(ssp=ssp_name) for ssp_name, df in spi_dfs.items()],
+                     ignore_index=True).set_index(['ssp', 'date']))
 
 def process_tasmax():
     # Get filenames
@@ -143,30 +154,6 @@ def check_suffix(df, suffix):
 def get_common_columns(dfs):
     return sorted(list(reduce(lambda x, y: x.intersection(y), 
                   (set(col.split('_')[0] for col in df.columns) for df in dfs))))
-    
-# def process_compound(spi, tm):
-#     results = {}
-#     for threshold in thresholds:
-#         name = '_'.join([f'{v}{c}{round(p, 1)}' for v, (c, p) in threshold.items()])
-#         spi_, tm_ = None, None
-#         for var, (op, p) in threshold.items():
-#             if var == 'spi' and check_suffix(spi, 'spi'):
-#                 spi_ = COMP_OPS[op](spi, p)
-#             elif var == 'tasmax' and check_suffix(tm, 'tasmax'):
-#                 tm_ = COMP_OPS[op](tm, p)
-#             else:
-#                 raise ValueError('Wrong order or update individual processing functions if not in [spi, tasmax]')
-#         compound = pd.concat([spi_, tm_], axis=1)
-        
-#         # Determine if compound
-#         common_cols = get_common_columns([spi, tm])
-#         for col in common_cols:
-#             df = compound.filter(regex=col)
-#             compound[f'{col}_compound'] = df.all(axis=1)
-
-#         results[name] = compound
-
-#     return results
 
 def process_compound(spi, tm, threshold):
     spi_, tm_ = None, None
@@ -187,17 +174,6 @@ def process_compound(spi, tm, threshold):
 
     return compound
     
-'''
--
--
--
--
--
--
--
--
--
-''' 
 ##################################################
 ##               Calculate Metrics              ##
 ##################################################
@@ -225,8 +201,8 @@ def total_consecutive(s):
 
 def main():
     # Process variables
-    pr_spi = filter_dates(process_spi())
-    tm = filter_dates(process_tasmax())
+    pr_spi = filter_dates(process_spi(), SSP_YEARS)
+    tm = filter_dates(process_tasmax(), SSP_YEARS)
     spi = pr_spi.filter(regex='_spi$')
     
     compound, results = {}, {}
