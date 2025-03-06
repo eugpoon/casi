@@ -5,166 +5,256 @@ from functools import reduce
 import pandas as pd
 import numpy as np
 import operator
+from standard_precip.spi import SPI
 warnings.filterwarnings('ignore')
 
-
-global CENTER, EVENT, MONTHS
-CENTER, EVENT, MONTHS = '', '', []
+##################################################
+##            Variable initialization           ##
+##################################################
 
 DATA_PATH = '../compound'
-HIST = (1961, 1990) # Historical range
-TEMPORAL_RES = ['daily', 'monthly_avg', 'annual_avg'][0] # Temporal resolution 
-VARIABLES = ['pr_', 'tasmax_']
+HISTORICAL_YEARS, SSP_YEARS = (1981, 2020), (2015, 2100)
+VARIABLES = ['pr_', 'tasmax_'] # original variable file names
 
 COMP_OPS = { # Comparative operators
     '<': operator.lt, '<=': operator.le,
     '>': operator.gt, '>=': operator.ge,
 }
 
+def initialize(center_, event_, months_, freq_, scale_):
+    global center, event, months, freq, scale, temporal_res, files, thresholds
+
+    if freq_ == 'D':
+        temporal_res = 'daily'
+    elif freq_ == 'M':
+        temporal_res = 'monthly_avg'
+    else: 
+        raise ValueError(f"{freq} should be one of ['D', 'M']")
+    
+    center, event, months, freq, scale = center_, event_, months_, freq_, scale_
+    files = get_files()
+    thresholds = setup_thresholds(event)
+    
+##################################################
+##              Get and read files              ##
+##################################################
 
 def get_files():
     '''Returns list of filenames in a directory that contain a specific string'''
     return [os.path.join(DATA_PATH, f) for f in os.listdir(DATA_PATH) 
-            if CENTER in f and f.endswith('.csv') and TEMPORAL_RES in f
+            if center in f and f.endswith('.csv') and temporal_res in f
             and any(v in f for v in VARIABLES)]
-
 
 def validate_file_path(file_path: str) -> None:
     '''Validate if the file path exists.'''
     if not os.path.exists(file_path):
         raise FileNotFoundError(f'{file_path} does not exist.')
 
-
-def preprocess_file(filename, is_hist, percentiles=None):
-    '''Returns preprocessed DataFrame based on CSV file type (historical or SSP)'''
-    validate_file_path(filename)
-    name = filename[:-4].split('/')[-1].split('_')
-    
+def read_data(filename):
     df = pd.read_csv(filename).rename(columns={'Unnamed: 0': 'date'})
     df['date'] = pd.to_datetime(df['date'])
-    df = df.set_index('date')
-    
-    if name[1] in ['pr']:
-        df *= 86400 # Convert to ml/day
-        # Calculate monthly mean per year while keeping original df dimensions
-        if EVENT == 'CDHE':
-            df = df.groupby(df.index.strftime('%Y-%m')).transform('mean')
-    
-    if name[1] in ['tasmax', 'tas']:
-        df -= 273.15 # Convert Kelvin to Celsius
+    return df
 
-    if is_hist:
-        # Calculate percentiles for each model
-        op, p = percentiles[name[1]]
-        df = df[(HIST[0] <= df.index.year) & (df.index.year <= HIST[1])]
-        # df = df.groupby(df.index.strftime('%Y-%m')).mean()
-        return pd.DataFrame({f'{name[1]}_{op}_{p}': df.quantile(p)})
-    else: 
-        df = df[df.index.month.isin(MONTHS)]
-        df.insert(0, 'ssp', name[2])
-        return '_'.join(name[1:3]), df
+def filter_dates(df):
+    dates = df.index.get_level_values('date')
+    return df[(SSP_YEARS[0] <= dates.year) & (dates.year <= SSP_YEARS[1]) 
+                & (dates.month.isin(months))]
+    
+##################################################
+##         Process variables separately         ##
+##################################################
 
+def process_spi():
+    # Get filenames
+    pr_files = [file for file in files if 'pr_' in file]
+    historical_file = next(file for file in pr_files if 'historical' in file)
+    ssp_files = sorted([file for file in pr_files if 'ssp' in file])
+
+    # Combine historical and ssp dataframes; Convert pr to mm/day
+    historical_df = read_data(historical_file)
+    spi_dfs = {os.path.basename(ssp_file).split('_')[2].split('.')[0]: 
+               pd.concat([historical_df, read_data(ssp_file)], ignore_index=True)
+               for ssp_file in ssp_files}
+    
+    # Calculate SPI
+    for ssp_name, df in spi_dfs.items():
+        print(f'Processing {ssp_name} spi...')
+        spi_df = pd.DataFrame({'date': df['date']})
+        df[df.select_dtypes(include=['number']).columns] *= 86400 # Convert to mm/day
+        for col in df.columns[1:]:
+            try:
+                spi_df[f'{col}_spi'] = (
+                    SPI().calculate(df, 'date', col, freq=freq, scale=scale, fit_type='lmom',
+                                    dist_type='gam').filter(regex='_calculated_index$'))
+            except Exception as e:
+                print(f'- Error calculating SPI for {col}: {e}')
+                
+        # Rename column names
+        spi_dfs[ssp_name].columns = (spi_dfs[ssp_name].columns[:1].tolist() + 
+                                     [f'{col}_pr' for col in spi_dfs[ssp_name].columns[1:]])
+        spi_dfs[ssp_name] = spi_dfs[ssp_name].merge(spi_df, on='date')
+        
+    # contains pr and spi
+    return pd.concat([df.assign(ssp=ssp_name) for ssp_name, df in spi_dfs.items()]).set_index(['ssp', 'date'])
+
+def process_tasmax():
+    # Get filenames
+    tm_files = [file for file in files if 'tasmax_' in file]
+    historical_file = next(file for file in tm_files if 'historical' in file)
+    ssp_files = sorted([file for file in tm_files if 'ssp' in file])
+    
+    # Combine ssp dataframes
+    tm = pd.concat([read_data(ssp_file)
+                      .assign(ssp=os.path.basename(ssp_file).split('_')[2].split('.')[0]) 
+                      for ssp_file in ssp_files])
+    
+    # Convert Kelvin to Celsius
+    numeric_columns = tm.select_dtypes(include=['number']).columns
+    tm.loc[:, numeric_columns] -= 273.15
+    return tm.set_index(['ssp', 'date']).add_suffix('_tasmax')
+
+##################################################
+##           Determine Compound Events          ##
+##################################################
 
 def setup_thresholds(event):
-    '''Set up thresholds for different severity levels of compound events.'''    
+    '''Set up thresholds for different severity levels of compound events.'''
+    def f_to_c(f):
+        return (f - 32) * 5/9
     if event == 'CDHE':
-        pr_op, tm_op = '<', '>'
-        return [{'pr': (pr_op, p), 'tasmax': (tm_op, q)} for p, q in 
-                # base; least --> most severe
-                zip([0.50, 0.50, 0.40, 0.30, 0.20, 0.10],  # pr
-                    [0.90, 0.75, 0.80, 0.85, 0.90, 0.95])] #tm  
+        spi_op, tm_op = '<', '>'
+        return [{'spi': (spi_op, p), 'tasmax': (tm_op, f_to_c(q))} for p, q in 
+                # least --> most severe
+                zip([-1, -2],  # spi (standardized)
+                    [90, 90])] #tm (f)
     elif event == 'CWHE':
-        pr_op, tm_op = '>', '>'
-        return [{'pr': (pr_op, p), 'tasmax': (tm_op, q)} for p, q in 
-                # base; least --> most severe
-                zip([0.50, 0.50, 0.60, 0.70, 0.80, 0.90],  # pr
-                    [0.90, 0.75, 0.80, 0.85, 0.90, 0.95])] # tm
+        spi_op, tm_op = '>', '>'
+        return [{'spi': (spi_op, p), 'tasmax': (tm_op, f_to_c(q))} for p, q in 
+                # least --> most severe
+                zip([1, 2],  # spi (standardized)
+                    [90, 90])] # tm (f)
     else:
         raise ValueError('Invalid event type')
 
+def check_suffix(df, suffix):
+    suffixes = [col.split('_')[-1] for col in df.columns if '_' in col]
+    return all(s == suffix for s in suffixes) and len(set(suffixes)) == 1
 
-def add_compound_flag(hist_df, ssp_df, percentiles):
-    '''Returns SSP dataframe with added compound flag based on historical percentiles'''
-    df = ssp_df[['date', 'ssp']]
-    for model in hist_df.index:
-        for var, (op, p) in percentiles.items():
-            perc = hist_df[f'{var}_{op}_{p}'].loc[model]
-            df[f'{model}_{var}_{op}_{p}'] = COMP_OPS[op](ssp_df[f'{model}_{var}'], perc)
-        df[f'{model}_compound'] = np.all(df[[f'{model}_{var}_{op}_{p}' 
-                                             for var, (op, p) in percentiles.items()]], axis=1)
-    return df
+def get_common_columns(dfs):
+    return sorted(list(reduce(lambda x, y: x.intersection(y), 
+                  (set(col.split('_')[0] for col in df.columns) for df in dfs))))
     
+# def process_compound(spi, tm):
+#     results = {}
+#     for threshold in thresholds:
+#         name = '_'.join([f'{v}{c}{round(p, 1)}' for v, (c, p) in threshold.items()])
+#         spi_, tm_ = None, None
+#         for var, (op, p) in threshold.items():
+#             if var == 'spi' and check_suffix(spi, 'spi'):
+#                 spi_ = COMP_OPS[op](spi, p)
+#             elif var == 'tasmax' and check_suffix(tm, 'tasmax'):
+#                 tm_ = COMP_OPS[op](tm, p)
+#             else:
+#                 raise ValueError('Wrong order or update individual processing functions if not in [spi, tasmax]')
+#         compound = pd.concat([spi_, tm_], axis=1)
+        
+#         # Determine if compound
+#         common_cols = get_common_columns([spi, tm])
+#         for col in common_cols:
+#             df = compound.filter(regex=col)
+#             compound[f'{col}_compound'] = df.all(axis=1)
 
-def max_consecutive(s):
-    '''Calculate maximum consecutive True values in a series.'''
-    return (s * (s.groupby((s != s.shift()).cumsum()).cumcount() + 1)).max()
+#         results[name] = compound
 
+#     return results
+
+def process_compound(spi, tm, threshold):
+    spi_, tm_ = None, None
+    for var, (op, p) in threshold.items():
+        if var == 'spi' and check_suffix(spi, 'spi'):
+            spi_ = COMP_OPS[op](spi, p)
+        elif var == 'tasmax' and check_suffix(tm, 'tasmax'):
+            tm_ = COMP_OPS[op](tm, p)
+        else:
+            raise ValueError('Wrong order or update variable processing if not in [spi, tasmax]')
+    compound = pd.concat([spi_, tm_], axis=1)
+        
+    # Determine if compound
+    common_cols = get_common_columns([spi, tm])
+    for col in common_cols:
+        df = compound.filter(regex=col)
+        compound[f'{col}_compound'] = df.all(axis=1)
+
+    return compound
+    
+'''
+-
+-
+-
+-
+-
+-
+-
+-
+-
+''' 
+##################################################
+##               Calculate Metrics              ##
+##################################################
 
 def group_data(df, suffix):
     '''Group data based on specified criteria'''
-    df_ = df.copy()
+    df_ = df.copy().reset_index()
     df_.date = df_.date.dt.year
     return (df_.set_index(['ssp', 'date']).filter(regex=suffix)
            .groupby(['ssp', 'date']))
 
-
-def get_common_columns(dfs):
-    return reduce(lambda x, y: x.intersection(y), (df.columns for df in dfs))
-
+def max_consecutive(s):
+    '''Calculate max consecutive True values in a series if max > 1'''
+    result = (s * (s.groupby((s != s.shift()).cumsum()).cumcount() + 1)).max()
+    return result if result > 1 else 0
+    
 def total_consecutive(s):
-    '''Calculate total True values in a series if more than 1 consecutive True.'''
+    '''Calculate total True values in a series if more than 1 consecutive True'''
     s = s.groupby((s != s.shift()).cumsum()).sum()
     return s[s > 1].sum()
+
+##################################################
+##                    Main                      ##
+##################################################
+
+def main():
+    # Process variables
+    pr_spi = filter_dates(process_spi())
+    tm = filter_dates(process_tasmax())
+    spi = pr_spi.filter(regex='_spi$')
     
-def main(center, event, months):
-
-    global CENTER, EVENT, MONTHS
-    CENTER, EVENT, MONTHS = center, event, months
-
-    thresholds = setup_thresholds(EVENT)
-
-    files = {key: [f for f in sorted(get_files()) if key in f] for key in ['historical', 'ssp']}
-    
-    # Process SSP files
-    ssp_dfs = {name: df for name, df in (preprocess_file(f, False, None) for f in files['ssp'])}
-    results = defaultdict(lambda: pd.DataFrame())
-    for k, df in ssp_dfs.items():
-        ssp = k.split('_')[0]
-        results[ssp] = pd.concat([results[ssp], df], axis=0)
-        
-    cols = get_common_columns(list(results.values()))
-
-    ssp_dfs = None
-    for key, df in results.items():
-        df = df[cols].reset_index()
-        df.rename(columns={c: f'{c}_{key}' for c in df.columns 
-                           if c not in ['date', 'ssp']}, inplace=True)
-        ssp_dfs = df if ssp_dfs is None else ssp_dfs.merge(df, on=['date', 'ssp'])
-
-    comp, hist, results = {}, {}, {}
+    compound, results = {}, {}
     for threshold in thresholds:
-        name = '_'.join([f'{v}{c}{p}' for v, (c, p) in threshold.items()])
+        name = '_'.join([f'{v}{c}{round(p, 1)}' for v, (c, p) in threshold.items()])
+        compound[name] = process_compound(spi, tm, threshold)
+        grouped = group_data(compound[name], f'_compound$')
+        
+        # Total Compound Days
+        results[name] = grouped.sum().add_suffix('_day_total')
 
-        hist[name] = pd.concat([preprocess_file(f, True, threshold) 
-                         for f in files['historical']], axis=1).dropna() 
-        comp[name] = add_compound_flag(hist[name], ssp_dfs, threshold)
-
-        comp_ = group_data(comp[name], f'_compound$')
-        results[name] = comp_.sum().add_suffix('_day_total')
+        # Total Compound Events
         results[name] = pd.concat(
-            [comp_.apply(lambda x: x.apply(max_consecutive)).add_suffix('_event_max'), 
-             results[name]], axis=1)
-        results[name] = pd.concat(
-            [comp_.apply(lambda x: x.apply(total_consecutive)).add_suffix('_event__total'), 
+            [grouped.apply(lambda x: x.apply(total_consecutive)).add_suffix('_event__total'), 
              results[name]], axis=1)
         
-    pr = group_data(ssp_dfs, f'_pr$').mean()
-    tm = group_data(ssp_dfs, f'_tasmax$').mean()p
+        # Max Consecutive Compound Event
+        results[name] = pd.concat(
+            [grouped.apply(lambda x: x.apply(max_consecutive)).add_suffix('_event_max'), 
+             results[name]], axis=1)
+        
+        
+        
+    pr_ = group_data(pr_spi, '^(?!.*scale).*_pr$').mean()
+    tm_ = group_data(tm, '_tasmax$').mean()
 
-    return ssp_dfs, hist, comp, results, pr, tm
+    return results, compound, pr_spi, tm, pr_, tm_
 
-if __name__ == '__main__':
-    ssp_dfs, hist, comp, results, pr, tm = main(center = 'LARC', event='CDHE', months='[6, 7, 8]')
 
 
 
