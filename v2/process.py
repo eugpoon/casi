@@ -216,20 +216,19 @@ def main():
 
         # Total Compound Events
         results[name] = pd.concat(
-            [grouped.apply(lambda x: x.apply(total_consecutive)).add_suffix('_event__total'), 
+            [grouped.apply(lambda x: x.apply(total_consecutive)).add_suffix('_event_total'), 
              results[name]], axis=1)
         
-        # Max Consecutive Compound Event
+        # Max Consecutive Compound Events
         results[name] = pd.concat(
             [grouped.apply(lambda x: x.apply(max_consecutive)).add_suffix('_event_max'), 
              results[name]], axis=1)
-        
-        
-        
+    
     pr_ = group_data(pr_spi, '^(?!.*scale).*_pr$').mean()
     tm_ = group_data(tm, '_tasmax$').mean()
+    spi_ = group_data(spi, '_spi$').mean()
 
-    return results, compound, pr_spi, tm, pr_, tm_
+    return results, compound, pr_spi, tm, pr_, tm_, spi_
 
 
 

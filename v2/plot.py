@@ -175,18 +175,13 @@ def plot_severity(results, ssps, var, agg='mean', alpha=1):
 
 def plot_all(results, agg='mean', alpha=1):
     ssps = list(pd.unique([idx[0] for df in results.values() for idx in df.index]))
+    for threshold, df in results.items(): 
+        print(f'{threshold}\n\n')
+        plot_dist(df, agg, alpha)
+        plot_ts(df, agg, alpha)
     
-    first_key = next(iter(results))
-    first_df = results[first_key]
+    plot_severity(results, ssps, var, agg=agg, alpha=alpha)
     
-    plot_dist(first_df, agg, alpha)
-    plot_ts(first_df, agg, alpha)
-    
-    # Use the remaining values for plot_severity
-    severity_dfs = {k: v for k, v in list(results.items())[1:]}
-    plot_severity(severity_dfs, ssps, var, agg=agg, alpha=alpha)
-    
-# This function can be used to set up the global variables
 def initialize(center_, months_, title_var_, var_, plotly_=False):
     global title, title_var, var, plotly
     month_title = '(' + ''.join(month_dict[month] for month in months_) + ')'
