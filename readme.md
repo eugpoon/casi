@@ -11,7 +11,7 @@
     - shorter time scale = short term drought
 - Current implementation uses daily spi and tasmax values
 - Change SPI caluculations
-    - fit gamma dist on 1981-2020
+    - fit gamma dist on 1981-2020 plus n days/months before
     - calculate spi for 2021-2100
 
 ## TODO:

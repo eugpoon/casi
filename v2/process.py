@@ -5,6 +5,7 @@ from functools import reduce
 import pandas as pd
 import numpy as np
 import operator
+import datetime
 from spi import SPI
 warnings.filterwarnings('ignore')
 
@@ -12,9 +13,9 @@ warnings.filterwarnings('ignore')
 ##            Variable initialization           ##
 ##################################################
 
+
 DATA_PATH = '../compound'
-HISTORICAL_YEARS, SSP_YEARS = (1981, 2020), (2021, 2100)
-SPI_YEARS = (HISTORICAL_YEARS[0], SSP_YEARS[1])
+
 VARIABLES = ['pr_', 'tasmax_'] # original variable in file names
 
 COMP_OPS = { # Comparative operators
@@ -24,17 +25,26 @@ COMP_OPS = { # Comparative operators
 
 def initialize(center_, event_, months_, freq_, scale_):
     global center, event, months, freq, scale, temporal_res, files, thresholds
-
+    global HISTORICAL_YEARS, SSP_YEARS, SPI_YEARS
+    
+    HISTORICAL_YEARS, SSP_YEARS = (1981, 2020), (2021, 2100)
+    
     if freq_ == 'D':
         temporal_res = 'daily'
+        delta = datetime.timedelta(days=scale_)
     elif freq_ == 'M':
         temporal_res = 'monthly_avg'
+        delta = datetime.timedelta(days=30 * scale_)  # Approximation for months
     else: 
         raise ValueError(f"{freq} should be one of ['D', 'M']")
+
+    # update start years:
+    SPI_YEARS = ((datetime.date(HISTORICAL_YEARS[0], 1, 1) - delta).year, SSP_YEARS[1])
     
     center, event, months, freq, scale = center_, event_, months_, freq_, scale_
     files = get_files()
     thresholds = setup_thresholds(event)
+
     
 ##################################################
 ##              Get and read files              ##
@@ -82,7 +92,8 @@ def process_spi():
 
     #Calculate SPI
     for ssp_name, df in spi_dfs.items():
-        spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, HISTORICAL_YEARS, freq=freq, scale=scale),
+        print(f'Processing {ssp_name} spi ({min(df.index.date)} to {max(df.index.date)})...') 
+        spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, HISTORICAL_YEARS, SPI_YEARS, freq=freq, scale=scale),
                                        df.add_suffix('_pr')], axis=1)
     
     # Combine all SSPs and return
@@ -207,7 +218,6 @@ def main():
     spi_ = group_data(spi, '_spi$').mean()
 
     return results, compound, pr_spi, tm, pr_, tm_, spi_
-
 
 
 

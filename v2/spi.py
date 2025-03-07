@@ -43,8 +43,8 @@ class SPI():
     @staticmethod
     def rolling_window_sum(df: pd.DataFrame, span: int=1, window_type: str=None,
                            center: bool=False, **kwargs):
-        df_scaled = df.rolling(window=span, win_type=window_type, center=center, **kwargs).sum()
-        return df_scaled.add_suffix(f'_roll{span}')
+        return df.rolling(window=span, win_type=window_type, center=center, **kwargs
+                         ).sum().add_suffix(f'_roll{span}')
 
     def fit_distribution(self, data: np.array, dist_type: str, fit_type: str='lmom', **kwargs):
         '''
@@ -74,7 +74,7 @@ class SPI():
             elif fit_type == 'mle':
                 params = self.distrb.fit(data, **kwargs)
             else:
-                raise AttributeError(f'{fit_type} is not an option. Option fit_types are mle and lmom')
+                raise AttributeError(f'{fit_type} not one of [mle, lmom]')
 
         return params, p_zero
 
@@ -103,18 +103,21 @@ class SPI():
 
         return norm_ppf
 
-    def calculate(self, df: pd.DataFrame, base_years:tuple, freq: str='M', scale: int=1, 
+    def calculate(self, df: pd.DataFrame, base_years:tuple, spi_years:tuple, freq: str='M', scale: int=1, 
                   fit_type: str='lmom', dist_type: str='gam', **dist_kwargs) -> pd.DataFrame:
         
         if scale > 1:
             df = self.rolling_window_sum(df, scale)
-
-        self._df_copy = df.copy()
+        
+        self._df_copy = df[(df.index.year >= base_years[0]) & (df.index.year <= spi_years[1])].copy()
         date_index = self._df_copy.index
+        print(f'--> filtered: {min(date_index.date)} to {max(date_index.date)}')
+        print(f'--> base: {base_years[0]} to {base_years[1]}')
 
         freq_map = {'D': 'dayofyear', 'W': 'isocalendar().week', 'M': 'month'}
         if freq not in freq_map:
-            raise AttributeError(f"{freq} is not a recognized frequency. Options are 'M', 'W', or 'D'")
+            raise AttributeError(f'{freq} not one of [M, W, D]')
+        
         self._df_copy[freq] = getattr(date_index, freq_map[freq])
 
         freq_range = self._df_copy[freq].unique()
@@ -136,5 +139,6 @@ class SPI():
                 dfs_p.loc[precip_single.index, f'{col.split('_')[0]}_spi'] = spi
         
             dfs.append(dfs_p)
+        # display(pd.concat([self._df_copy] + dfs, axis=1).drop(columns=freq).head(40))
 
         return pd.concat([self._df_copy] + dfs, axis=1).drop(columns=freq)
