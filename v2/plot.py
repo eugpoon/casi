@@ -17,7 +17,8 @@ plt.rcParams['font.size'] = 10
 plt.rcParams['figure.titlesize'] = 15
 plt.rcParams['axes.linewidth'] = 0.1
 plt.rcParams['patch.linewidth'] = 0
-plt.rcParams['grid.linewidth'] = 0.1
+plt.rcParams['axes.grid'] = True
+plt.rcParams['grid.linewidth'] = 0.2
 
 
 colors = px.colors.qualitative.Plotly
