@@ -1,20 +1,18 @@
 # V2 (in progess)
-Incorporate feedback from meeting
-
 ## Completed
-- use >90F (32.22C) for temperature threshold to capture extreme heat waves
-- change historical years: 1981-2020
-- show uncertainty/variability across models (10th and 90th) for time series
-- add total compound event days
+- Use >90F (32.22C) for temperature threshold to capture extreme heat waves
+- Change historical years: 1981-2020
+- Show uncertainty/variability across models (10th and 90th) for time series
+- Add total compound event days
 	- compound day: a day that satisfies all conditions
 	- compound event: a compound day that is part of a sequence of more than one consecutive days
-- add standardized precipitation index
+- Add standardized precipitation index
 	- +spi (wet), -spi (dry), magnitude (severity)
     - shorter time scale = short term drought
 - Current implementation uses daily spi and tasmax values
 - Change SPI caluculations
-    - gamma dist based on 1981-2020
-    - standardization based on 2021-2100
+    - fit gamma dist on 1981-2020
+    - calculate spi for 2021-2100
 
 ## TODO:
 - Monthly looks questionable with only JJA
