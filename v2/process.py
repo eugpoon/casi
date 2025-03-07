@@ -5,7 +5,7 @@ from functools import reduce
 import pandas as pd
 import numpy as np
 import operator
-from standard_precip.spi import SPI
+from spi import SPI
 warnings.filterwarnings('ignore')
 
 ##################################################
@@ -54,19 +54,17 @@ def validate_file_path(file_path: str) -> None:
 def read_data(filename):
     df = pd.read_csv(filename).rename(columns={'Unnamed: 0': 'date'})
     df['date'] = pd.to_datetime(df['date'])
+    df = df.set_index('date')
     return df.sort_values('date').interpolate(method='linear', limit_direction='both')
 
-def filter_dates(df, year_range:tuple, spi=False):
-    if spi: # dates in column
-        dates = pd.to_datetime(df.date).dt
-        return df[(year_range[0] <= dates.year) & (dates.year <= year_range[1])]
-    else: # dates in index
-        dates = df.index.get_level_values('date')
-        return df[(year_range[0] <= dates.year) & (dates.year <= year_range[1]) 
-                & (dates.month.isin(months))]
+def filter_dates(df, year_range:tuple, year_month):
+    dates = df.index.get_level_values('date')
+    filtered = df[(year_range[0] <= dates.year) & (dates.year <= year_range[1])]
+    return filtered[filtered.index.get_level_values('date').month.isin(months)] if year_month else filtered
+    
     
 ##################################################
-##         Process variables separately         ##
+##               Process variables              ##
 ##################################################
 
 def process_spi():
@@ -78,34 +76,17 @@ def process_spi():
     # Combine historical and ssp dataframes; Convert pr to mm/day
     historical_df = read_data(historical_file)
     spi_dfs = {os.path.basename(ssp_file).split('_')[2].split('.')[0]: 
-               filter_dates(pd.concat([historical_df, read_data(ssp_file)], ignore_index=True), 
-                            SPI_YEARS, spi=True).dropna(how='all')
+               filter_dates(pd.concat([historical_df, read_data(ssp_file)]), SPI_YEARS, year_month=False
+                           ).dropna(how='all') * 86400
                for ssp_file in ssp_files}
-    
-    # Calculate SPI
+
+    #Calculate SPI
     for ssp_name, df in spi_dfs.items():
-        print(f'Processing {ssp_name} spi ({min(df.date)} - {max(df.date)})...')        
-        
-        df[df.select_dtypes(include=['number']).columns] *= 86400 # Convert to mm/day
-        columns = df.columns[1:]
-        
-        spi_df = pd.DataFrame({'date': df.date}).reset_index(drop=True)
-        for col in columns:
-            try:
-                spi_df[f'{col}_spi'] = (
-                    SPI().calculate(df, 'date', col, freq=freq, scale=scale, fit_type='lmom',
-                                    dist_type='gam').filter(regex='_calculated_index$')
-                    .reset_index(drop=True))
-                
-            except Exception as e:
-                print(f'- Error calculating SPI for {col}: {e}')
-                
-        # Rename column names
-        spi_dfs[ssp_name].columns = (spi_dfs[ssp_name].columns[:1].tolist() + 
-                                     [f'{col}_pr' for col in spi_dfs[ssp_name].columns[1:]])
-        spi_dfs[ssp_name] = spi_dfs[ssp_name].merge(spi_df, on='date')
-    # Contains pr, scaled, and spi
-    return (pd.concat([df.assign(ssp=ssp_name) for ssp_name, df in spi_dfs.items()],
+        spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, HISTORICAL_YEARS, freq=freq, scale=scale),
+                                       df.add_suffix('_pr')], axis=1)
+    
+    # Combine all SSPs and return
+    return (pd.concat([df.assign(ssp=ssp_name).reset_index() for ssp_name, df in spi_dfs.items()],
                      ignore_index=True).set_index(['ssp', 'date']))
 
 def process_tasmax():
@@ -115,14 +96,11 @@ def process_tasmax():
     ssp_files = sorted([file for file in tm_files if 'ssp' in file])
     
     # Combine ssp dataframes
-    tm = pd.concat([read_data(ssp_file)
+    tm = pd.concat([(read_data(ssp_file)-273.15) # Convert Kelvin to Celsius
                       .assign(ssp=os.path.basename(ssp_file).split('_')[2].split('.')[0]) 
                       for ssp_file in ssp_files])
-    
-    # Convert Kelvin to Celsius
-    numeric_columns = tm.select_dtypes(include=['number']).columns
-    tm.loc[:, numeric_columns] -= 273.15
-    return tm.set_index(['ssp', 'date']).add_suffix('_tasmax')
+
+    return tm.reset_index().set_index(['ssp', 'date']).add_suffix('_tasmax')
 
 ##################################################
 ##           Determine Compound Events          ##
@@ -201,8 +179,8 @@ def total_consecutive(s):
 
 def main():
     # Process variables
-    pr_spi = filter_dates(process_spi(), SSP_YEARS)
-    tm = filter_dates(process_tasmax(), SSP_YEARS)
+    pr_spi = filter_dates(process_spi(), SSP_YEARS, year_month=True)
+    tm = filter_dates(process_tasmax(), SSP_YEARS, year_month=True)
     spi = pr_spi.filter(regex='_spi$')
     
     compound, results = {}, {}
@@ -224,7 +202,7 @@ def main():
             [grouped.apply(lambda x: x.apply(max_consecutive)).add_suffix('_event_max'), 
              results[name]], axis=1)
     
-    pr_ = group_data(pr_spi, '^(?!.*scale).*_pr$').mean()
+    pr_ = group_data(pr_spi, '_pr$').mean()
     tm_ = group_data(tm, '_tasmax$').mean()
     spi_ = group_data(spi, '_spi$').mean()
 

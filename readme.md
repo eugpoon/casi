@@ -2,31 +2,31 @@
 Incorporate feedback from meeting
 
 ## Completed
-- change historical years: 1981-2020 (ssp 245 for last 5)
+- use >90F (32.22C) for temperature threshold to capture extreme heat waves
+- change historical years: 1981-2020
 - show uncertainty/variability across models (10th and 90th) for time series
 - add total compound event days
 	- compound day: a day that satisfies all conditions
 	- compound event: a compound day that is part of a sequence of more than one consecutive days
-
-## TODO:
-- over 90f temperature for threshold instead of percentile for extreme heat waves
-- rolling mean: 29 days precipitation before current day (historical and ssp)
-- plot total compound days vs events (separate ssp)
 - add standardized precipitation index
 	- +spi (wet), -spi (dry), magnitude (severity)
     - shorter time scale = short term drought
-    - ? daily spi meausures accumulated drought severity based on the previous n days
+- Current implementation uses daily spi and tasmax values
+- Change SPI caluculations
+    - gamma dist based on 1981-2020
+    - standardization based on 2021-2100
+
+## TODO:
+- Monthly looks questionable with only JJA
 
 ## 02/26/25 meeting notes
 - rolling/moving window instead of monthly precipitation
-	- window size?
-	- rolling sum for pr
 - use more recent base/historical period
 - dry/wet precipitation percentile: not 50th
 - show variability across models
 - drought index, humidity, soil moisture
 - different threshold based on seasonal/center
-...
+- ...
 
 
 # V1
