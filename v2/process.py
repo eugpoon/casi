@@ -1,18 +1,22 @@
-import os, calendar, warnings
-from typing import List, Dict, Tuple
-from collections import defaultdict
-from functools import reduce
+import os
+# import calendar
+import warnings
 import pandas as pd
 import numpy as np
-import operator
 import datetime
+from itertools import groupby
+import operator
+
+# from typing import List, Dict, Tuple
+# from collections import defaultdict
+from functools import reduce
 from spi import SPI
+
 warnings.filterwarnings('ignore')
 
 ##################################################
 ##            Variable initialization           ##
 ##################################################
-
 
 DATA_PATH = '../compound'
 
@@ -38,12 +42,31 @@ def initialize(center_, event_, months_, freq_, scale_):
     else: 
         raise ValueError(f"{freq} should be one of ['D', 'M']")
 
-    # update start years:
+    # update start years
     SPI_YEARS = ((datetime.date(HISTORICAL_YEARS[0], 1, 1) - delta).year, SSP_YEARS[1])
     
     center, event, months, freq, scale = center_, event_, months_, freq_, scale_
     files = get_files()
     thresholds = setup_thresholds(event)
+
+def setup_thresholds(event):
+    '''Set up thresholds for different severity levels of compound events.'''
+    def f_to_c(f):
+        return (f - 32) * 5/9
+    if event == 'CDHE':
+        spi_op, tm_op = '<', '>'
+        return [{'spi': (spi_op, p), 'tasmax': (tm_op, f_to_c(q))} for p, q in 
+                # least --> most severe
+                zip([-1, -2],  # spi (standardized)
+                    [90, 90])] #tm (f)
+    elif event == 'CWHE':
+        spi_op, tm_op = '>', '>'
+        return [{'spi': (spi_op, p), 'tasmax': (tm_op, f_to_c(q))} for p, q in 
+                # least --> most severe
+                zip([1, 2],  # spi (standardized)
+                    [90, 90])] # tm (f)
+    else:
+        raise ValueError('Invalid event type')
 
     
 ##################################################
@@ -83,11 +106,11 @@ def process_spi():
     historical_file = next(file for file in pr_files if 'historical' in file)
     ssp_files = sorted([file for file in pr_files if 'ssp' in file])
 
-    # Combine historical and ssp dataframes; Convert pr to mm/day
+    # Combine historical and ssp dataframes
     historical_df = read_data(historical_file)
     spi_dfs = {os.path.basename(ssp_file).split('_')[2].split('.')[0]: 
                filter_dates(pd.concat([historical_df, read_data(ssp_file)]), SPI_YEARS, year_month=False
-                           ).dropna(how='all') * 86400
+                           ).dropna(how='all') * 86400 # Convert pr to mm/day
                for ssp_file in ssp_files}
 
     #Calculate SPI
@@ -96,7 +119,7 @@ def process_spi():
         spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, HISTORICAL_YEARS, SPI_YEARS, freq=freq, scale=scale),
                                        df.add_suffix('_pr')], axis=1)
     
-    # Combine all SSPs and return
+    # Combine all SSPs
     return (pd.concat([df.assign(ssp=ssp_name).reset_index() for ssp_name, df in spi_dfs.items()],
                      ignore_index=True).set_index(['ssp', 'date']))
 
@@ -117,24 +140,7 @@ def process_tasmax():
 ##           Determine Compound Events          ##
 ##################################################
 
-def setup_thresholds(event):
-    '''Set up thresholds for different severity levels of compound events.'''
-    def f_to_c(f):
-        return (f - 32) * 5/9
-    if event == 'CDHE':
-        spi_op, tm_op = '<', '>'
-        return [{'spi': (spi_op, p), 'tasmax': (tm_op, f_to_c(q))} for p, q in 
-                # least --> most severe
-                zip([-1, -2],  # spi (standardized)
-                    [90, 90])] #tm (f)
-    elif event == 'CWHE':
-        spi_op, tm_op = '>', '>'
-        return [{'spi': (spi_op, p), 'tasmax': (tm_op, f_to_c(q))} for p, q in 
-                # least --> most severe
-                zip([1, 2],  # spi (standardized)
-                    [90, 90])] # tm (f)
-    else:
-        raise ValueError('Invalid event type')
+
 
 def check_suffix(df, suffix):
     suffixes = [col.split('_')[-1] for col in df.columns if '_' in col]
@@ -184,6 +190,14 @@ def total_consecutive(s):
     s = s.groupby((s != s.shift()).cumsum()).sum()
     return s[s > 1].sum()
 
+def total_sequence(s):
+    return sum(1 for key, group in groupby(s) if key and sum(group) > 1)
+
+def mean_duration(s):
+    sequences = [len(list(g)) for k, g in groupby(s) if k]
+    sequences = [s for s in sequences if s > 1]
+    return round(np.mean(sequences), 2) if sequences else 0
+
 ##################################################
 ##                    Main                      ##
 ##################################################
@@ -202,19 +216,25 @@ def main():
         
         # Total Compound Days
         results[name] = grouped.sum().add_suffix('_day_total')
-
+        
         # Total Compound Events
-        results[name] = pd.concat(
-            [grouped.apply(lambda x: x.apply(total_consecutive)).add_suffix('_event_total'), 
-             results[name]], axis=1)
+        a = [grouped.apply(lambda x: x.apply(total_consecutive)).add_suffix('_event_total'), results[name]]
+        results[name] = pd.concat(a, axis=1)
         
         # Max Consecutive Compound Events
-        results[name] = pd.concat(
-            [grouped.apply(lambda x: x.apply(max_consecutive)).add_suffix('_event_max'), 
-             results[name]], axis=1)
+        a = [grouped.apply(lambda x: x.apply(max_consecutive)).add_suffix('_event_max'), results[name]]
+        results[name] = pd.concat(a, axis=1)
+
+        # Total Compound Event Sequences
+        a = [grouped.apply(lambda x: x.apply(total_sequence)).add_suffix('_sequence_total'), results[name]]
+        results[name] = pd.concat(a, axis=1)
+        
+        # Average Compound Event Duration
+        a = [grouped.apply(lambda x: x.apply(mean_duration)).add_suffix('_duration_mean'), results[name]]
+        results[name] = pd.concat(a, axis=1)
     
-    pr_ = group_data(pr_spi, '_pr$').mean()
-    tm_ = group_data(tm, '_tasmax$').mean()
+    pr_  = group_data(pr_spi, '_pr$').mean()
+    tm_  = group_data(tm, '_tasmax$').mean()
     spi_ = group_data(spi, '_spi$').mean()
 
     return results, compound, pr_spi, tm, pr_, tm_, spi_
