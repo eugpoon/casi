@@ -1,15 +1,11 @@
 import os
-# import calendar
 import warnings
 import pandas as pd
 import numpy as np
 import datetime
-from itertools import groupby
 import operator
-
-# from typing import List, Dict, Tuple
-# from collections import defaultdict
 from functools import reduce
+from itertools import groupby
 from spi import SPI
 
 warnings.filterwarnings('ignore')
@@ -139,8 +135,6 @@ def process_tasmax():
 ##################################################
 ##           Determine Compound Events          ##
 ##################################################
-
-
 
 def check_suffix(df, suffix):
     suffixes = [col.split('_')[-1] for col in df.columns if '_' in col]

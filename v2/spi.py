@@ -132,6 +132,7 @@ class SPI():
                 baseline_mask = ((precip_single.index.year >= base_years[0]) & 
                                  (precip_single.index.year <= base_years[1]))
                 baseline_data = precip_single[baseline_mask]
+                # print(f'--> filtered: {min(baseline_data.index.date)} to {max(baseline_data.index.date)}')
                 params, p_zero = self.fit_distribution(
                     np.sort(baseline_data)[::-1], dist_type, fit_type, **dist_kwargs)
         

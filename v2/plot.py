@@ -24,24 +24,43 @@ plt.rcParams['grid.linewidth'] = 0.2
 colors = px.colors.qualitative.Plotly
 month_dict = {m: calendar.month_name[m].upper()[0] for m in range(1, 13)}
 
+##################################################
+##                   General                    ##
+##################################################
+
+def initialize(center_, months_, title_var_, var_, plotly_=False):
+    global title, title_var, var, plotly
+    month_title = '(' + ''.join(month_dict[month] for month in months_) + ')'
+    title = f'{center_} - {title_var_} Per Year {month_title} Across CMIP6 Models'
+    title_var = title_var_
+    var = var_
+    plotly = plotly_
+    
 def check_df(df):
     df = df.filter(regex=var)
     if df.empty:
         raise ValueError('Empty dataframe')
     return df
-    
 
-def plot_dist(df, agg='mean', alpha=1):
+##################################################
+##                   KDE Plot                   ##
+##################################################
+
+def plot_dist(df, agg='mean', alpha=1, threshold=''):
     df = check_df(df)
     for i, ssp in enumerate(df.index.get_level_values('ssp').unique()):
         sns.kdeplot(data=df.loc[ssp].agg(agg, axis=1), label=f'{ssp}_{agg}', 
                     color=colors[i % len(colors)], linewidth=0.5, alpha=alpha)
-    plt.title(title)
+    plt.title(f'{title} {threshold}')
     plt.xlabel(title_var)
     plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
     plt.show()
 
-def plot_ts(df, agg='mean', alpha=1):
+##################################################
+##                  Time Series                 ##
+##################################################
+
+def plot_ts(df, agg='mean', alpha=1, threshold=''):
     df = check_df(df)
     if plotly:
         fig = go.Figure()
@@ -59,11 +78,8 @@ def plot_ts(df, agg='mean', alpha=1):
             fig.add_trace(go.Scatter(x=mean_data.index, y=mean_data, name=ssp, mode='lines',
                                      line=dict(color=colors[i], width=0.8), opacity=alpha,
                                      legendgroup=ssp))
-            
-            # fig.add_trace(go.Scatter(x=agg_data.index, y=agg_data, name=ssp, opacity=alpha,
-            #                          line=dict(color=colors[i], width=0.8), mode='lines'))
 
-        fig.update_layout(title=title, xaxis_title='Year', yaxis_title=title_var,
+        fig.update_layout(title=f'{title} {threshold}', xaxis_title='Year', yaxis_title=title_var,
                           width=1000, height=300, margin=dict(l=20, r=20, t=30, b=20),
                           paper_bgcolor='white', plot_bgcolor='white',
                           xaxis=dict(showgrid=True, gridcolor='lightgrey', gridwidth=0.1),
@@ -73,7 +89,7 @@ def plot_ts(df, agg='mean', alpha=1):
         for i, ssp in enumerate(df.index.get_level_values('ssp').unique()):
             data = df.loc[ssp].agg(agg, axis=1)
             sns.lineplot(data=data, label=ssp, color=colors[i], linewidth=0.5, alpha=alpha)
-        plt.title(title)
+        plt.title(f'{title} {threshold}')
         plt.xlabel('Year')
         plt.ylabel(title_var)
         plt.legend(loc='center left', bbox_to_anchor=(1, 1))
@@ -87,12 +103,16 @@ def plot_ts(df, agg='mean', alpha=1):
             
             sns.lineplot(data=agg_data, label=ssp, color=colors[i], linewidth=0.8, alpha=alpha)
             plt.fill_between(agg_data.index, p10, p90, color=colors[i], alpha=0.1)
-            plt.title(title)
+            plt.title(f'{title} {threshold}')
             plt.xlabel('Year')
             plt.ylabel(title_var)
             plt.legend(loc='center left', bbox_to_anchor=(1, 1))
             plt.tight_layout()
             plt.show()
+
+##################################################
+##    Threshold Comparison (1 ssp per plot)     ##
+##################################################
 
 def plot_severity(results, ssps, var, agg='mean', alpha=1):
     if plotly:
@@ -118,11 +138,6 @@ def plot_severity(results, ssps, var, agg='mean', alpha=1):
                     x=mean_data.index.get_level_values(1), y=mean_data, name=threshold,
                     line=dict(color=colors[j % len(colors)], width=0.8), mode='lines',
                     opacity=alpha, legendgroup=threshold, showlegend=(i == 1)), row=i, col=1)
-                
-                # fig.add_trace(go.Scatter(
-                #     x=data.index.get_level_values(1), y=data.agg(agg, axis=1), name=threshold,
-                #     line=dict(color=colors[j % len(colors)], width=0.8), mode='lines',
-                #     opacity=alpha, legendgroup=threshold, showlegend=(i == 1)), row=i, col=1)
 
         fig.update_layout(title='Severity Comparison: '+title, width=1000, height=200*len(ssps),
                           margin=dict(l=50, r=20, t=120, b=50),
@@ -177,19 +192,31 @@ def plot_severity(results, ssps, var, agg='mean', alpha=1):
 def plot_all(results, agg='mean', alpha=1):
     ssps = list(pd.unique([idx[0] for df in results.values() for idx in df.index]))
     for threshold, df in results.items(): 
-        print(f'{threshold}\n\n')
-        plot_dist(df, agg, alpha)
-        plot_ts(df, agg, alpha)
+        # print(f'{threshold}\n\n')
+        plot_dist(df, agg, alpha, threshold)
+        plot_ts(df, agg, alpha, threshold)
     
     plot_severity(results, ssps, var, agg=agg, alpha=alpha)
-    
-def initialize(center_, months_, title_var_, var_, plotly_=False):
-    global title, title_var, var, plotly
+
+
+def variable_comp(results, var, metrics, center_, months_, agg='mean', alpha=1):
+    ssps = list(pd.unique([idx[0] for df in results.values() for idx in df.index]))
     month_title = '(' + ''.join(month_dict[month] for month in months_) + ')'
-    title = f'{center_} - {title_var_} Per Year {month_title} Across CMIP6 Models'
-    title_var = title_var_
-    var = var_
-    plotly = plotly_
+    title = f'{center_} - <variable> Per Year {month_title} Across CMIP6 Models'
+    
+    for threshold, df in results.items(): 
+        for ssp in df.index.get_level_values('ssp').unique():
+            for i, col in enumerate(var):
+                data = df.filter(regex=col).loc[ssp].agg(agg, axis=1)
+                sns.lineplot(data=data, label=metrics[col], color=colors[i], 
+                             linewidth=0.5, alpha=alpha)
+            plt.title(f'{title}; {ssp}; {threshold}')
+            plt.xlabel('Year')
+            plt.ylabel('')    
+            plt.legend(loc='center left', bbox_to_anchor=(1, 1))
+            plt.tight_layout()
+            plt.show()
+
 
 
 
