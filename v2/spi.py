@@ -2,8 +2,11 @@
 Modified code from https://github.com/e-baumer/standard_precip/blob/master/standard_precip/base_sp.py
 - original --> new
 - Default df input: date as a column --> date as index
-- Specified pr data --> whole dataframe (all pr)
+- Specified pr data --> whole dataframe (assumes all pr data)
 - Fit distribution using all available data --> based on baseline year range
+- If freq='D', use dayofyear --> use 'MM-DD'
+
+Note: month version is not maintained
 '''
 
 from functools import reduce
@@ -38,7 +41,7 @@ class SPI():
     def __init__(self):
         self.distrb = None
         self.non_zero_distr = ['gam', 'pe3']
-        self._df_copy = None
+        # filtered = None
 
     @staticmethod
     def rolling_window_sum(df: pd.DataFrame, span: int=1, window_type: str=None,
@@ -103,43 +106,67 @@ class SPI():
 
         return norm_ppf
 
-    def calculate(self, df: pd.DataFrame, base_years:tuple, spi_years:tuple, freq: str='M', scale: int=1, 
+    def extract_days(self, df, month_day, n):
+        matching_dates = df[df['D'] == month_day].index
+        slices = [df.loc[date - pd.Timedelta(days=n-1):date] for date in matching_dates]
+        return pd.concat(slices, ignore_index=False)
+
+        
+
+    def calculate(self, df: pd.DataFrame, base_years:tuple, spi_years:tuple, months:list, freq: str='M', scale: int=1, 
                   fit_type: str='lmom', dist_type: str='gam', **dist_kwargs) -> pd.DataFrame:
         
         if scale > 1:
             df = self.rolling_window_sum(df, scale)
+
+        filtered = df[(df.index.year >= base_years[0]) & (df.index.year <= spi_years[1])]
         
-        self._df_copy = df[(df.index.year >= base_years[0]) & (df.index.year <= spi_years[1])].copy()
-        date_index = self._df_copy.index
+        date_index = filtered.index
         print(f'--> filtered: {min(date_index.date)} to {max(date_index.date)}')
         print(f'--> base: {base_years[0]} to {base_years[1]}')
 
-        freq_map = {'D': 'dayofyear', 'W': 'isocalendar().week', 'M': 'month'}
+        freq_map = {'D': 'month_day', 'W': 'isocalendar().week', 'M': 'month'}
         if freq not in freq_map:
             raise AttributeError(f'{freq} not one of [M, W, D]')
-        
-        self._df_copy[freq] = getattr(date_index, freq_map[freq])
+    
+        if freq == 'D':
+            filtered[freq] = filtered.index.strftime('%m-%d')
+        else:
+            filtered[freq] = getattr(date_index, freq_map[freq])
 
-        freq_range = self._df_copy[freq].unique()
+        # only include specified months in freq_range
+        month_strings = [f'{m:02d}' for m in months]
+        freq_range = [s for s in filtered[freq].unique() if s.split('-')[0] in month_strings]
 
         dfs = []
         for col in df.columns[:-1]:
-            dfs_p = pd.DataFrame(index=self._df_copy.index)
+            dfs_p = pd.DataFrame(index=filtered.index)
+            
             for j in freq_range:
-                precip_single = self._df_copy.loc[self._df_copy[freq]==j, col].dropna()
-        
+                precip_single = filtered.loc[(filtered.index.year > base_years[1]) & 
+                                             (filtered[freq] == j), col].dropna()
+            
                 # Fit distribution using only baseline period data
-                baseline_mask = ((precip_single.index.year >= base_years[0]) & 
-                                 (precip_single.index.year <= base_years[1]))
-                baseline_data = precip_single[baseline_mask]
-                # print(f'--> filtered: {min(baseline_data.index.date)} to {max(baseline_data.index.date)}')
+                baseline_data = self.extract_days(filtered[[col, freq]], j, scale)[col].dropna()
+                baseline_data = baseline_data[(baseline_data.index.year >= base_years[0]) & 
+                                              (baseline_data.index.year <= base_years[1])]
+                # print(f'--> base filtered {len(baseline_data.index)} values:', end=' ')
+                # print(f'{min(baseline_data.index.date)} to {max(baseline_data.index.date)}')
+                
                 params, p_zero = self.fit_distribution(
                     np.sort(baseline_data)[::-1], dist_type, fit_type, **dist_kwargs)
+                # print(params, p_zero)
         
                 spi = self.cdf_to_ppf(precip_single, params, p_zero)
+                # print(f'--> ssp filtered {len(spi)} values:', end=' ')
+                # print(f'{min(precip_single.index.date)} to {max(precip_single.index.date)}')
+                
+                # print(j, len(spi), precip_single.index)
+                # print(baseline_data)
+                
                 dfs_p.loc[precip_single.index, f'{col.split('_')[0]}_spi'] = spi
         
             dfs.append(dfs_p)
-        # display(pd.concat([self._df_copy] + dfs, axis=1).drop(columns=freq).head(40))
+        # display(pd.concat([filtered] + dfs, axis=1).drop(columns=freq).head(40))
 
-        return pd.concat([self._df_copy] + dfs, axis=1).drop(columns=freq)
+        return pd.concat([filtered] + dfs, axis=1).drop(columns=freq)

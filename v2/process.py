@@ -112,7 +112,7 @@ def process_spi():
     #Calculate SPI
     for ssp_name, df in spi_dfs.items():
         print(f'Processing {ssp_name} spi ({min(df.index.date)} to {max(df.index.date)})...') 
-        spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, HISTORICAL_YEARS, SPI_YEARS, freq=freq, scale=scale),
+        spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, HISTORICAL_YEARS, SPI_YEARS, months, freq=freq, scale=scale),
                                        df.add_suffix('_pr')], axis=1)
     
     # Combine all SSPs

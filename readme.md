@@ -1,6 +1,7 @@
 # V2 (in progess)
 ## TODO:
 - Look at other time scale: 3, 6, 9 months using daily data
+- Apply to other centers
 - Monthly looks questionable with only JJA --> ignore for now
 
 ## Completed
@@ -19,6 +20,7 @@
 - Change SPI caluculations
     - Fit gamma dist on 1981-2020 plus n days/months before
     - Calculate spi for 2021-2100
+    - Include rolling sums from n days before
 - Add variable comparison plot per ssp
 
 ### SPI general calc:
