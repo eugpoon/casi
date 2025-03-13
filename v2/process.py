@@ -39,27 +39,6 @@ class Compound:
         
         self.files = self.get_files()
        
-
-    # def setup_thresholds(self, event):
-    #     '''Set up thresholds for different severity levels of compound events.'''
-    #     def f_to_c(f):
-    #         return (f - 32) * 5/9
-            
-    #     if event == 'CDHE':
-    #         spi_op, tm_op = '<', '>'
-    #         return [{'spi': (spi_op, p), 'tasmax': (tm_op, f_to_c(q))} for p, q in 
-    #                 # least --> most severe
-    #                 zip([-1, -2],  # spi (standardized)
-    #                     [90, 90])] # tm (f)
-    #     elif event == 'CWHE':
-    #         spi_op, tm_op = '>', '>'
-    #         return [{'spi': (spi_op, p), 'tasmax': (tm_op, f_to_c(q))} for p, q in 
-    #                 # least --> most severe
-    #                 zip([1, 2],    # spi (standardized)
-    #                     [90, 90])] # tm (f)
-    #     else:
-    #         raise ValueError('Invalid event type')
-    
     ##################################################
     ##              Get and read files              ##
     ##################################################
@@ -196,43 +175,38 @@ class Compound:
         pr_spi = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
         tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
         spi = pr_spi.filter(regex='_spi$')
-        
-        compound, results = {}, {}
+
+        results, compounds = [], []
         for threshold in self.thresholds:
-            name = '_'.join([f'{v}{c}{round(p, 1)}' for v, (c, p) in threshold.items()])
-            compound[name] = self.process_compound(spi, tm, threshold)
-            grouped = self.group_data(compound[name], f'_compound$')
-            
-            # Total Compound Days
-            results[name] = grouped.sum().add_suffix('_day_total')
-            
-            # Total Compound Events
-            a = [grouped.apply(lambda x: x.apply(self.total_consecutive)).add_suffix('_event_total'), results[name]]
-            results[name] = pd.concat(a, axis=1)
-            
-            # Max Consecutive Compound Events
-            a = [grouped.apply(lambda x: x.apply(self.max_consecutive)).add_suffix('_event_max'), results[name]]
-            results[name] = pd.concat(a, axis=1)
-
-            # Total Compound Event Sequences
-            a = [grouped.apply(lambda x: x.apply(self.total_sequence)).add_suffix('_sequence_total'), results[name]]
-            results[name] = pd.concat(a, axis=1)
-            
-            # Average Compound Event Duration
-            a = [grouped.apply(lambda x: x.apply(self.mean_duration)).add_suffix('_duration_mean'), results[name]]
-            results[name] = pd.concat(a, axis=1)
+            thres = '_'.join([f'{v}{c}{round(p, 1)}' for v, (c, p) in threshold.items()])
+            compounds.append(self.process_compound(spi, tm, threshold))
+            compounds[-1].insert(0, 'threshold', thres)            
+            grouped = self.group_data(compounds[-1], f'_compound$')
+            result = pd.concat([
+                # Total Compound Days
+                grouped.sum().add_suffix('_day_total'),
+                # Total Compound Events
+                grouped.apply(lambda x: x.apply(self.total_consecutive)).add_suffix('_event_total'),
+                # Max Consecutive Compound Events
+                grouped.apply(lambda x: x.apply(self.max_consecutive)).add_suffix('_event_max'),
+                # Total Compound Event Sequences
+                grouped.apply(lambda x: x.apply(self.total_sequence)).add_suffix('_sequence_total'),
+                # Average Compound Event Duration
+                grouped.apply(lambda x: x.apply(self.mean_duration)).add_suffix('_duration_mean')
+            ], axis=1)
+            result.insert(0, 'threshold', thres)
+            results.append(result)
         
-        pr_  = self.group_data(pr_spi, '_pr$').mean()
-        tm_  = self.group_data(tm, '_tasmax$').mean()
-        spi_ = self.group_data(spi, '_spi$').mean()
+        results = pd.concat(results).reset_index()#.set_index(['threshold', 'ssp', 'date'])
+        compounds = pd.concat(compounds).reset_index()#.set_index(['threshold', 'ssp', 'date'])
+        
+        pr  = self.group_data(pr_spi, '_pr$').mean().reset_index()
+        tm  = self.group_data(tm, '_tasmax$').mean().reset_index()
+        spi = self.group_data(spi, '_spi$').mean().reset_index()
 
-        return results, compound, pr_spi, tm, pr_, tm_, spi_
+        return results, compounds, pr_spi, tm, pr, tm, spi
 
-# Example usage
-if __name__ == "__main__":
-    compound = Compound('center_name', 'event_type', [1, 2, 3], 'M', 1)
-    results, compound_data, pr_spi, tm, pr_, tm_, spi_ = compound.main()
-    print(results)
+        
 
 
 
