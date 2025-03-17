@@ -145,7 +145,8 @@ class SPI():
         return pd.concat(slices, ignore_index=False)
 
     def calculate(self, df: pd.DataFrame, base_years:tuple, spi_years:tuple, months:list, freq: str='D', 
-                  scale: int=1, fit_type: str='lmom', dist_type: str='gam', **dist_kwargs) -> pd.DataFrame:
+                  scale: int=1, gamma_n:int=10, fit_type: str='lmom', dist_type: str='gam', 
+                  **dist_kwargs) -> pd.DataFrame:
         column = df.columns
         
         if scale > 1:
@@ -172,7 +173,7 @@ class SPI():
                                   (filtered[freq] == j)].drop(columns=freq).dropna()
 
             # Fit distribution using only baseline period data
-            baseline_data = self.extract_days(filtered, j, scale).dropna()
+            baseline_data = self.extract_days(filtered, j, gamma_n).dropna()
             baseline_data = baseline_data[(baseline_data.index.year >= base_years[0]) & 
                                           (baseline_data.index.year <= base_years[1])]
             params_df = self.fit_distribution(baseline_data.drop(columns=freq), dist_type, 

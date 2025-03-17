@@ -11,13 +11,14 @@ from spi import SPI
 warnings.filterwarnings('ignore')
 
 class Compound:
-    def __init__(self, center, event, months, freq, scale, thresholds):
+    def __init__(self, center, event, months, freq, scale, thresholds, gamma_n):
         self.center = center
         self.event = event
         self.months = months
         self.freq = freq
         self.scale = scale
         self.thresholds = thresholds
+        self.gamma_n = gamma_n
         self.DATA_PATH = '../compound'
         self.VARIABLES = ['pr_', 'tasmax_']
         self.COMP_OPS = {
@@ -87,7 +88,8 @@ class Compound:
         for ssp_name, df in spi_dfs.items():
             print(f'Processing {ssp_name} spi ({min(df.index.date)} to {max(df.index.date)})...') 
             spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, self.HISTORICAL_YEARS, self.SPI_YEARS,
-                        self.months, freq=self.freq, scale=self.scale), df.add_suffix('_pr')], axis=1)
+                        self.months, freq=self.freq, scale=self.scale, gamma_n=self.gamma_n),
+                                           df.add_suffix('_pr')], axis=1)
         
         # Combine all SSPs
         return (pd.concat([df.assign(ssp=ssp_name).reset_index() for ssp_name, df in spi_dfs.items()],

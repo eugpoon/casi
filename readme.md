@@ -1,6 +1,5 @@
 # V2 (in progess)
 ## TODO:
-- Separate time scale # and # of values used in each gamma distribution (same rn)
 - Apply to other centers
 - Compound flooding
 
@@ -17,6 +16,7 @@
 - Current implementation uses daily spi and tasmax values
 - Add variable comparison plot per ssp
 - Compare multiple time scales: (7, 14) days and (3, 6, 9) months using daily data
+- Separate time scale # and # of values used in each gamma distribution
 
 ## Modified SPI Calculations:
 - Source: https://github.com/e-baumer/standard_precip/blob/master/standard_precip/base_sp.py

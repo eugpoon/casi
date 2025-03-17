@@ -19,6 +19,8 @@ plt.rcParams['axes.linewidth'] = 0.1
 plt.rcParams['patch.linewidth'] = 0
 plt.rcParams['axes.grid'] = True
 plt.rcParams['grid.linewidth'] = 0.2
+plt.rcParams['legend.loc'] = 'upper left'
+
 
 class Plot:
     ##################################################
@@ -42,6 +44,10 @@ class Plot:
         if df.empty:
             raise ValueError('Empty dataframe')
         return pd.concat([temp, df], axis=1), df.columns
+
+    def get_agg(self, df, cols, l=0.1, u=0.9, agg='mean'):
+        df = df.set_index('date')
+        return df, df[cols].agg(agg, axis=1), df[cols].quantile(0.1, axis=1), df[cols].quantile(0.9, axis=1)
     
     ##################################################
     ##                   KDE Plot                   ##
@@ -55,7 +61,7 @@ class Plot:
                 label=f'{ssp}_{agg}', color=self.colors[i % len(self.colors)], linewidth=0.5, alpha=alpha)
         plt.title(f'{self.title} {threshold}')
         plt.xlabel(self.title_var)
-        plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+        plt.legend(bbox_to_anchor=(1, 1))
         plt.show()
 
     ##################################################
@@ -67,9 +73,7 @@ class Plot:
         df, cols = self.check_df(df)
         fig = go.Figure()
         for i, ssp in enumerate(df.ssp.unique()):
-            data = df[df.ssp==ssp].set_index('date')[cols]
-            agg_data, p10, p90 = data.agg(agg, axis=1), data.quantile(0.1, axis=1), data.quantile(0.9, axis=1)
-            
+            data, agg_data, p10, p90 = self.get_agg(df[df.ssp==ssp], cols)
             # Add error range (with no legend entry)
             fig.add_trace(go.Scatter(x=agg_data.index.tolist() + agg_data.index[::-1].tolist(),
                                      y=p90.tolist() + p10[::-1].tolist(), fill='toself',
@@ -89,25 +93,23 @@ class Plot:
     def ts_sns(self, df, agg='mean', alpha=1, threshold=''):
         '''Plot time series using seaborn.'''
         df, cols = self.check_df(df)
-
         for i, ssp in enumerate(df.ssp.unique()):
             data = df[df.ssp==ssp].set_index('date')[cols].agg(agg, axis=1)
             sns.lineplot(data=data, label=ssp, color=self.colors[i], linewidth=0.5, alpha=alpha)
         plt.title(f'{self.title} {threshold}')
         plt.xlabel('Year')
         plt.ylabel(self.title_var)
-        plt.legend(loc='center left', bbox_to_anchor=(1, 1))
+        plt.legend(bbox_to_anchor=(1, 1))
         plt.tight_layout()
         plt.show()
         for i, ssp in enumerate(df.ssp.unique()):
-            data = df[df.ssp==ssp].set_index('date').drop(columns='ssp')
-            agg_data, p10, p90 = data.agg(agg, axis=1), data.quantile(0.1, axis=1), data.quantile(0.9, axis=1)
+            data, agg_data, p10, p90 = self.get_agg(df[df.ssp==ssp], cols)
             sns.lineplot(data=agg_data, label=ssp, color=self.colors[i], linewidth=0.8, alpha=alpha)
             plt.fill_between(agg_data.index, p10, p90, color=self.colors[i], alpha=0.1)
             plt.title(f'{self.title} {threshold}')
             plt.xlabel('Year')
             plt.ylabel(self.title_var)
-            plt.legend(loc='center left', bbox_to_anchor=(1, 1))
+            plt.legend(bbox_to_anchor=(1, 1))
             plt.tight_layout()
             plt.show()
             
@@ -123,9 +125,9 @@ class Plot:
                 
         for i, ssp in enumerate(ssps, start=1):
             for j, t in enumerate(thres):
-                df_ = results[(results.threshold==t) & (results.ssp==ssp)]
-                data, cols = self.check_df(df_.set_index('date'))
-                agg_data,p10,p90 = (data[cols].agg(agg, axis=1), data[cols].quantile(0.1, axis=1), data[cols].quantile(0.9, axis=1))
+                df = results[(results.threshold==t) & (results.ssp==ssp)]
+                data, cols = self.check_df(df)
+                data, agg_data, p10, p90 = self.get_agg(data, cols)
 
                 # Add error range
                 fig.add_trace(go.Scatter(
@@ -160,12 +162,12 @@ class Plot:
         for i, ssp in enumerate(ssps):
             ax = axes[i] if len(ssps) > 1 else axes
             data, cols = self.check_df(df[(df.ssp==ssp)])
-            agg_data,p10,p90 = (data[cols].agg(agg, axis=1), data[cols].quantile(0.1, axis=1), data[cols].quantile(0.9, axis=1))
-            sns.lineplot(x=data.date, y=agg_data, hue=data.threshold, palette=self.colors,
-                                alpha=alpha, linewidth=alpha, ax=ax)
+            data, agg_data, p10, p90 = self.get_agg(data, cols)
+            sns.lineplot(x=data.index, y=agg_data, hue=data.threshold, palette=self.colors,
+                         alpha=alpha, linewidth=alpha, ax=ax)
             for j, t in enumerate(thres):
                 mask = data.threshold == t
-                ax.fill_between(x=data[mask].date, y1=p10[mask], y2=p90[mask], color=self.colors[j], alpha=0.1)
+                ax.fill_between(x=data[mask].index, y1=p10[mask], y2=p90[mask], color=self.colors[j], alpha=0.1)
             ax.set(title=ssp, ylabel=(self.title_var if i == len(ssps)//2 else ''), 
                    xlabel=('Year' if i == len(ssps)-1 else ''))
             ax.grid(True, color='lightgrey', linewidth=0.2)
@@ -197,7 +199,7 @@ class Plot:
                 plt.title(f'{title}; {ssp}; {t}')
                 plt.xlabel('Year')
                 plt.ylabel('')    
-                plt.legend(loc='center left', bbox_to_anchor=(1, 1))
+                plt.legend(title='Variable', bbox_to_anchor=(1, 1))
                 plt.tight_layout()
                 plt.show()
                 
@@ -215,7 +217,7 @@ class Plot:
                 plt.title(f'{title}; {ssp}; {threshold}')
                 plt.xlabel('Year')
                 plt.ylabel(title_var)    
-                plt.legend(title='SPI Time Scale', loc='center left', bbox_to_anchor=(1, 1))
+                plt.legend(title='SPI Time Scale', bbox_to_anchor=(1, 1))
                 plt.tight_layout()
                 plt.show()
     
