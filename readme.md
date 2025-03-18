@@ -27,7 +27,7 @@
     - If freq == 'D': get daily pr files
 - Calculate rolling sum of \<scale\> window size for accumulated precipitation
 - Fit a gamma distribution for each day of the year using historical values (1981-2020)
-    - Values: rolling sums for current day plus \<scale\> days prior
+    - Values: rolling sums for current day plus n days prior
 - Calculate SPI for 2021-2100 based on gamma distribution
     - +spi (wet), -spi (dry), magnitude (severity)
 

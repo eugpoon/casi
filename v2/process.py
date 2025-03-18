@@ -189,11 +189,11 @@ class Compound:
                 grouped.sum().add_suffix('_day_total'),
                 # Total Compound Events
                 grouped.apply(lambda x: x.apply(self.total_consecutive)).add_suffix('_event_total'),
-                # Max Consecutive Compound Events
-                grouped.apply(lambda x: x.apply(self.max_consecutive)).add_suffix('_event_max'),
+                # Max Compound Event Sequence Duration
+                grouped.apply(lambda x: x.apply(self.max_consecutive)).add_suffix('_duration_max'),
                 # Total Compound Event Sequences
                 grouped.apply(lambda x: x.apply(self.total_sequence)).add_suffix('_sequence_total'),
-                # Average Compound Event Duration
+                # Average Compound Event Sequence Duration
                 grouped.apply(lambda x: x.apply(self.mean_duration)).add_suffix('_duration_mean')
             ], axis=1)
             result.insert(0, 'threshold', thres)

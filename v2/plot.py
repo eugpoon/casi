@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 # Set plot defaults
 plt.rcParams['figure.figsize'] = (15, 4)
-plt.rcParams['figure.dpi'] = 100 # 300, 600
+plt.rcParams['figure.dpi'] = 150 # 300, 600
 plt.rcParams['font.size'] = 10
 plt.rcParams['figure.titlesize'] = 15
 plt.rcParams['axes.linewidth'] = 0.1
@@ -185,20 +185,28 @@ class Plot:
     ##     Variable Comparison (1 ssp per plot)     ##
     ##################################################
 
-    def variable_comp(self, results:dict, var:list, metrics:dict, agg='mean', alpha=1):
+    def variable_comp(self, results, var:list, metrics:dict, agg='mean', alpha=1):
         '''Plot variable comparison.'''
         title = f'{self.center} - <variable> Per Year {self.month_title} Across CMIP6 Models'
         ssps, thres = results.ssp.unique(), results.threshold.unique()
         for t in thres:
+            ymin, ymax = [], []
+            df1 = results[results.threshold==t]
+            for col in var:
+                df, cols = self.check_df(df1, col)
+                agg_data = df[cols].agg(agg, axis=1)
+                ymin.append(min(agg_data)), ymax.append(max(agg_data))
+            
             for ssp in ssps:
-                df_ = results[(results.threshold==t) & (results.ssp==ssp)]
+                df2 = df1[df1.ssp==ssp]
                 for i, col in enumerate(var):
-                    df, cols = self.check_df(df_, col)
-                    sns.lineplot(x=df.date, y=df[cols].agg(agg, axis=1),  
+                    df3, cols = self.check_df(df2, col)
+                    sns.lineplot(x=df3.date, y=df3[cols].agg(agg, axis=1),  
                                  label=metrics[col], color=self.colors[i], linewidth=0.5, alpha=alpha)
                 plt.title(f'{title}; {ssp}; {t}')
                 plt.xlabel('Year')
                 plt.ylabel('')    
+                plt.ylim(min(ymin), max(ymax))
                 plt.legend(title='Variable', bbox_to_anchor=(1, 1))
                 plt.tight_layout()
                 plt.show()
@@ -211,12 +219,14 @@ class Plot:
         for col, title_var in metrics.items():
             title = f'{self.center} - {title_var} Per Year {self.month_title} Across CMIP6 Models'
             df, cols = self.check_df(results, col)
+            agg_data = df[cols].agg(agg, axis=1)
             for i, ssp in enumerate(df.ssp.unique()):
                 sns.lineplot(x=df.date, y=df[df.ssp==ssp][cols].agg(agg, axis=1), 
                              hue=df.scale, palette=self.colors, linewidth=0.8, alpha=alpha)
                 plt.title(f'{title}; {ssp}; {threshold}')
                 plt.xlabel('Year')
-                plt.ylabel(title_var)    
+                plt.ylabel(title_var)   
+                plt.ylim(min(agg_data), max(agg_data))
                 plt.legend(title='SPI Time Scale', bbox_to_anchor=(1, 1))
                 plt.tight_layout()
                 plt.show()
