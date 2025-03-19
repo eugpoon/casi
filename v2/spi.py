@@ -162,10 +162,11 @@ class SPI():
             raise AttributeError(f'{freq} not one of [M, D]')
         filtered[freq] = filtered.index.strftime(freq_map[freq])
 
-        # Only include specified months in freq_range
-        month_strings = [f'{m:02d}' for m in months]
-        freq_range = [s for s in filtered[freq].unique() if s.split('-')[0] in month_strings]
-        # freq_range = filtered[freq].unique()
+        if months: # Only include specified months in freq_range
+            month_strings = [f'{m:02d}' for m in months]
+            freq_range = [s for s in filtered[freq].unique() if s.split('-')[0] in month_strings]
+        else:
+            freq_range = filtered[freq].unique()
         
         dfs = []
         for j in freq_range:

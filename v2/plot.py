@@ -27,15 +27,15 @@ class Plot:
     ##                   General                    ##
     ##################################################
 
-    def __init__(self, center_, months_, title_var_, var_):
-        self.center = center_
-        self.months = months_
-        self.title_var = title_var_
-        self.var = var_
+    def __init__(self, center, months, title_var, var):
+        self.center = center
+        self.months = months
+        self.title_var = title_var
+        self.var = var
         self.colors = px.colors.qualitative.Plotly
         self.month_dict = {m: calendar.month_name[m].upper()[0] for m in range(1, 13)}
-        self.month_title = '(' + ''.join(self.month_dict[month] for month in months_) + ')'
-        self.title = f'{center_} - {title_var_} Per Year {self.month_title} Across CMIP6 Models'
+        self.month_title = '(' + ''.join(self.month_dict[month] for month in months) + ') ' if months else ''
+        self.title = f'{center} - {title_var} Per Year {self.month_title}Across CMIP6 Models'
 
     def check_df(self, df, var=None):
         '''Filter dataframe based on variable.'''
@@ -217,13 +217,12 @@ class Plot:
     
     def scale_comp(self, results:pd.DataFrame(), metrics:dict, threshold:str='', agg:str='mean', alpha:float=1):
         for col, title_var in metrics.items():
-            title = f'{self.center} - {title_var} Per Year {self.month_title} Across CMIP6 Models'
             df, cols = self.check_df(results, col)
             agg_data = df[cols].agg(agg, axis=1)
             for i, ssp in enumerate(df.ssp.unique()):
                 sns.lineplot(x=df.date, y=df[df.ssp==ssp][cols].agg(agg, axis=1), 
                              hue=df.scale, palette=self.colors, linewidth=0.8, alpha=alpha)
-                plt.title(f'{title}; {ssp}; {threshold}')
+                plt.title(f'{self.title}; {ssp}; {threshold}')
                 plt.xlabel('Year')
                 plt.ylabel(title_var)   
                 plt.ylim(min(agg_data), max(agg_data))

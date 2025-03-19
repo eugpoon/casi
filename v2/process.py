@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import operator
+from collections import Counter
 from functools import reduce
 from itertools import groupby
 from spi import SPI
@@ -23,20 +24,18 @@ class Compound:
         self.VARIABLES = ['pr_', 'tasmax_']
         self.COMP_OPS = {
             '<': operator.lt, '<=': operator.le,
-            '>': operator.gt, '>=': operator.ge,
-        }
+            '>': operator.gt, '>=': operator.ge,}
         
         if freq == 'D':
             self.temporal_res = 'daily'
-            delta = datetime.timedelta(days=scale)
+            self.delta = datetime.timedelta(days=scale)
         elif freq == 'M':
             self.temporal_res = 'monthly_avg'
-            delta = datetime.timedelta(days=30 * scale)  # approximation for months
+            self.delta = datetime.timedelta(days=30 * scale)  # approximation for months
         else:
             raise ValueError(f"{freq} should be one of ['D', 'M']")
 
-        self.HISTORICAL_YEARS, self.SSP_YEARS = (1981, 2020), (2021, 2100)
-        self.SPI_YEARS = ((datetime.date(self.HISTORICAL_YEARS[0], 1, 1) - delta).year, self.SSP_YEARS[1])
+        self.HISTORICAL_YEARS, self.SSP_YEARS, self.SPI_YEARS = None, None, None
         
         self.files = self.get_files()
        
@@ -65,7 +64,7 @@ class Compound:
         dates = df.index.get_level_values('date')
         filtered = df[(year_range[0] <= dates.year) & (dates.year <= year_range[1])]
         return (filtered[filtered.index.get_level_values('date').month.isin(self.months)] 
-                if year_month else filtered)
+                if year_month and self.months else filtered)
     
     ##################################################
     ##               Process variables              ##
@@ -73,9 +72,9 @@ class Compound:
 
     def process_spi(self):
         # Get filenames
-        pr_files = [file for file in self.files if 'pr_' in file]
-        historical_file = next(file for file in pr_files if 'historical' in file)
-        ssp_files = sorted([file for file in pr_files if 'ssp' in file])
+        files = [file for file in self.files if 'pr_' in file]
+        historical_file = next(file for file in files if 'historical' in file)
+        ssp_files = sorted([file for file in files if 'ssp' in file])
 
         # Combine historical and ssp dataframes
         historical_df = self.read_data(historical_file)
@@ -97,9 +96,22 @@ class Compound:
 
     def process_tasmax(self):
         # Get filenames
-        tm_files = [file for file in self.files if 'tasmax_' in file]
-        historical_file = next(file for file in tm_files if 'historical' in file)
-        ssp_files = sorted([file for file in tm_files if 'ssp' in file])
+        files = [file for file in self.files if 'tasmax_' in file]
+        historical_file = next(file for file in files if 'historical' in file)
+        ssp_files = sorted([file for file in files if 'ssp' in file])
+        
+        # Combine ssp dataframes
+        tm = pd.concat([(self.read_data(ssp_file)-273.15) # Convert Kelvin to Celsius
+                          .assign(ssp=os.path.basename(ssp_file).split('_')[2].split('.')[0]) 
+                          for ssp_file in ssp_files])
+
+        return tm.reset_index().set_index(['ssp', 'date']).add_suffix('_tasmax')
+
+    def process_rzsm(self):
+        # Get filenames
+        files = [file for file in self.files if 'rzsm_' in file]
+        historical_file = next(file for file in files if 'historical' in file)
+        ssp_files = sorted([file for file in files if 'ssp' in file])
         
         # Combine ssp dataframes
         tm = pd.concat([(self.read_data(ssp_file)-273.15) # Convert Kelvin to Celsius
@@ -111,28 +123,22 @@ class Compound:
     ##################################################
     ##           Determine Compound Events          ##
     ##################################################
-    
-    def check_suffix(self, df, suffix):
-        suffixes = [col.split('_')[-1] for col in df.columns if '_' in col]
-        return all(s == suffix for s in suffixes) and len(set(suffixes)) == 1
 
-    def get_common_columns(self, dfs):
-        return sorted(list(reduce(lambda x, y: x.intersection(y), 
-                      (set(col.split('_')[0] for col in df.columns) for df in dfs))))
+    def get_common_columns(self, df):
+        return {col.split('_')[0] for col in df.columns 
+                    if Counter(c.split('_')[0] for c in df.columns)[col.split('_')[0]] > 1}
 
-    def process_compound(self, spi, tm, threshold):
-        spi_, tm_ = None, None
+    def process_compound(self, dfs, threshold):
+        compound = []
         for var, (op, p) in threshold.items():
-            if var == 'spi' and self.check_suffix(spi, 'spi'):
-                spi_ = self.COMP_OPS[op](spi, p)
-            elif var == 'tasmax' and self.check_suffix(tm, 'tasmax'):
-                tm_ = self.COMP_OPS[op](tm, p)
-            else:
-                raise ValueError('Wrong order or update variable processing if not in [spi, tasmax]')
-        compound = pd.concat([spi_, tm_], axis=1)
+            df = dfs.filter(regex=var)
+            if df.empty:
+                raise ValueError('Empty dataframe')
+            compound.append(self.COMP_OPS[op](df, p))
+        compound = pd.concat(compound, axis=1)
             
         # Determine if compound
-        common_cols = self.get_common_columns([spi, tm])
+        common_cols = self.get_common_columns(compound)
         for col in common_cols:
             df = compound.filter(regex=col)
             compound[f'{col}_compound'] = df.all(axis=1)
@@ -174,14 +180,33 @@ class Compound:
     
     def main(self):
         # Process variables
-        pr_spi = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
-        tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
-        spi = pr_spi.filter(regex='_spi$')
+        if self.event in ['CWHE','CDHE']:
+            self.HISTORICAL_YEARS, self.SSP_YEARS = (1981, 2020), (2021, 2100)
+            self.SPI_YEARS = ((datetime.date(self.HISTORICAL_YEARS[0], 1, 1) - self.delta).year,
+                              self.SSP_YEARS[1])
+            
+            pr = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
+            tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
+            spi = pr.filter(regex='_spi$')
+            dfs = pd.concat([spi, tm], axis=1)
+            
+            groups = {'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
+                      'spi': self.group_data(spi, '_spi$').mean().reset_index(),
+                      'tasmax': self.group_data(tm, '_tasmax$').mean().reset_index()
+                      }
+            
+        elif self.event in ['CFE']:
+            self.HISTORICAL_YEARS, self.SSP_YEARS = (1950, 2014), (2015, 2100)
+            # pr = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
+            tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
+            dfs = pd.concat([spi, tm], axis=1)
+            
+        dfs = dfs.loc[:, ~dfs.columns.duplicated()]
 
         results, compounds = [], []
         for threshold in self.thresholds:
             thres = '_'.join([f'{v}{c}{round(p, 1)}' for v, (c, p) in threshold.items()])
-            compounds.append(self.process_compound(spi, tm, threshold))
+            compounds.append(self.process_compound(dfs, threshold))
             compounds[-1].insert(0, 'threshold', thres)            
             grouped = self.group_data(compounds[-1], f'_compound$')
             result = pd.concat([
@@ -189,24 +214,22 @@ class Compound:
                 grouped.sum().add_suffix('_day_total'),
                 # Total Compound Events
                 grouped.apply(lambda x: x.apply(self.total_consecutive)).add_suffix('_event_total'),
-                # Max Compound Event Sequence Duration
-                grouped.apply(lambda x: x.apply(self.max_consecutive)).add_suffix('_duration_max'),
                 # Total Compound Event Sequences
                 grouped.apply(lambda x: x.apply(self.total_sequence)).add_suffix('_sequence_total'),
+                # Max Compound Event Sequence Duration
+                grouped.apply(lambda x: x.apply(self.max_consecutive)).add_suffix('_duration_max'),
                 # Average Compound Event Sequence Duration
                 grouped.apply(lambda x: x.apply(self.mean_duration)).add_suffix('_duration_mean')
             ], axis=1)
             result.insert(0, 'threshold', thres)
             results.append(result)
         
-        results = pd.concat(results).reset_index()#.set_index(['threshold', 'ssp', 'date'])
-        compounds = pd.concat(compounds).reset_index()#.set_index(['threshold', 'ssp', 'date'])
+        results = pd.concat(results).reset_index()
+        compounds = pd.concat(compounds).reset_index()
         
-        pr  = self.group_data(pr_spi, '_pr$').mean().reset_index()
-        tm  = self.group_data(tm, '_tasmax$').mean().reset_index()
-        spi = self.group_data(spi, '_spi$').mean().reset_index()
+        
 
-        return results, compounds, pr_spi, tm, pr, tm, spi
+        return results, compounds, groups
 
         
 
