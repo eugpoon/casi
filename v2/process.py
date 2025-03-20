@@ -106,19 +106,6 @@ class Compound:
                           for ssp_file in ssp_files])
 
         return tm.reset_index().set_index(['ssp', 'date']).add_suffix('_tasmax')
-
-    def process_rzsm(self):
-        # Get filenames
-        files = [file for file in self.files if 'rzsm_' in file]
-        historical_file = next(file for file in files if 'historical' in file)
-        ssp_files = sorted([file for file in files if 'ssp' in file])
-        
-        # Combine ssp dataframes
-        tm = pd.concat([(self.read_data(ssp_file)-273.15) # Convert Kelvin to Celsius
-                          .assign(ssp=os.path.basename(ssp_file).split('_')[2].split('.')[0]) 
-                          for ssp_file in ssp_files])
-
-        return tm.reset_index().set_index(['ssp', 'date']).add_suffix('_tasmax')
     
     ##################################################
     ##           Determine Compound Events          ##
@@ -180,26 +167,19 @@ class Compound:
     
     def main(self):
         # Process variables
-        if self.event in ['CWHE','CDHE']:
-            self.HISTORICAL_YEARS, self.SSP_YEARS = (1981, 2020), (2021, 2100)
-            self.SPI_YEARS = ((datetime.date(self.HISTORICAL_YEARS[0], 1, 1) - self.delta).year,
+        self.HISTORICAL_YEARS, self.SSP_YEARS = (1981, 2020), (2021, 2100)
+        self.SPI_YEARS = ((datetime.date(self.HISTORICAL_YEARS[0], 1, 1) - self.delta).year,
                               self.SSP_YEARS[1])
             
-            pr = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
-            tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
-            spi = pr.filter(regex='_spi$')
-            dfs = pd.concat([spi, tm], axis=1)
+        pr = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
+        tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
+        spi = pr.filter(regex='_spi$')
+        dfs = pd.concat([spi, tm], axis=1)
             
-            groups = {'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
-                      'spi': self.group_data(spi, '_spi$').mean().reset_index(),
-                      'tasmax': self.group_data(tm, '_tasmax$').mean().reset_index()
-                      }
-            
-        elif self.event in ['CFE']:
-            self.HISTORICAL_YEARS, self.SSP_YEARS = (1950, 2014), (2015, 2100)
-            # pr = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
-            tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
-            dfs = pd.concat([spi, tm], axis=1)
+        groups = {'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
+                  'spi': self.group_data(spi, '_spi$').mean().reset_index(),
+                  'tasmax': self.group_data(tm, '_tasmax$').mean().reset_index()
+                    }
             
         dfs = dfs.loc[:, ~dfs.columns.duplicated()]
 
@@ -227,8 +207,6 @@ class Compound:
         results = pd.concat(results).reset_index()
         compounds = pd.concat(compounds).reset_index()
         
-        
-
         return results, compounds, groups
 
         
