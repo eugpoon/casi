@@ -1,9 +1,9 @@
-# V2 (in progess)
-## TODO:
-- Apply to other centers
-- Compound flooding
+# V3 (in progess)
+### TODO:
+- Compound flooding (RZSM + precipitation)
 
-## Completed
+# V2
+### Completed
 - Use >90F (32.22C) for temperature threshold to capture extreme heat waves
 - Change historical years: 1981-2020
 - Show uncertainty/variability across models (10th and 90th) for time series
@@ -18,7 +18,7 @@
 - Compare multiple time scales: (7, 14) days and (3, 6, 9) months using daily data
 - Separate time scale # and # of values used in each gamma distribution
 
-## Modified SPI Calculations:
+### Modified SPI Calculations:
 - Source: https://github.com/e-baumer/standard_precip/blob/master/standard_precip/base_sp.py
 - Setup: dataframe of precipitation values; rows are days/months; columns are models
     - freq = ['D', 'M']; monthly looks questionable with only JJA --> ignore for now
@@ -31,7 +31,7 @@
 - Calculate SPI for 2021-2100 based on gamma distribution
     - +spi (wet), -spi (dry), magnitude (severity)
 
-## Determine if compound:
+### Determine if compound:
 - Extract results JJA for 2021-2100 for spi and tasmax
 - Establish threshold conditions for each variable
 - Filter by common model/column names
@@ -40,8 +40,8 @@
 - Determine if threshold conditions are met
 - Output 1 df per threshold combo
 
-## Problem:
-### Missing values: issue with SPI calculation
+### Problem:
+#### Missing values: issue with SPI calculation
 - Handle missing data to calculate spi (last paragraph) [link](https://www.droughtmanagement.info/literature/WMO_standardized_precipitation_index_user_guide_en_2012.pdf#page=9)
 - 1 row of missing pr results in \<scale\> rows of missing spi
 - Columns with a lot of nan's may result in no spi (KACE-1-0-G for LARC)
@@ -54,25 +54,25 @@
     - Options: interpolation, multivariate imputation (slow), back/front fill, ...
 - Solution: interpolation by linear (df sorted by time)
 
-## 02/26/25 meeting notes
+### 02/26/25 meeting notes
 - Rolling/moving window instead of monthly precipitation
 - Use more recent base/historical period
 - Dry/wet precipitation percentile: not 50th
 - Show variability across models
 - Drought index, humidity, soil moisture
 - Different threshold based on seasonal/center
-- ...
 
 
 # V1
-- methodology used in [Feng et al. 2020](https://www.sciencedirect.com/science/article/pii/S2212094720303121?via%3Dihub#bib17) with some changes made from 02/25/25 meeting
-	- Feedback loops
-	- Humidity
-	- JPL
-	- Most influential factors per center
-- Modification:
+- Methodology used in [Feng et al. 2020](https://www.sciencedirect.com/science/article/pii/S2212094720303121?via%3Dihub#bib17)
+- Modification
 	- CWHE uses daily precipitation instead of monthly
 	- Show uncertainty/variability across models (10th and 90th) for time series
+### 02/25/25 meeting notes
+- Feedback loops
+- Humidity
+- JPL
+- Most influential factors per center
 
 
 # Others
