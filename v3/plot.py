@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 
 # Set plot defaults
 plt.rcParams['figure.figsize'] = (15, 4)
-plt.rcParams['figure.dpi'] = 150 # 300, 600
+plt.rcParams['figure.dpi'] = 100 # 300, 600
 plt.rcParams['font.size'] = 10
 plt.rcParams['figure.titlesize'] = 15
 plt.rcParams['axes.linewidth'] = 0.1
