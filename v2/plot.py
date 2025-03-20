@@ -102,6 +102,10 @@ class Plot:
         plt.legend(bbox_to_anchor=(1, 1))
         plt.tight_layout()
         plt.show()
+
+        data, agg_data, p10, p90 = self.get_agg(df, cols)
+        ymin = min(p10.min(), p90.min(), agg_data.min())
+        ymax = max(p10.max(), p90.max(), agg_data.max())
         for i, ssp in enumerate(df.ssp.unique()):
             data, agg_data, p10, p90 = self.get_agg(df[df.ssp==ssp], cols)
             sns.lineplot(data=agg_data, label=ssp, color=self.colors[i], linewidth=0.8, alpha=alpha)
@@ -109,6 +113,7 @@ class Plot:
             plt.title(f'{self.title} {threshold}')
             plt.xlabel('Year')
             plt.ylabel(self.title_var)
+            plt.ylim(ymin, ymax)
             plt.legend(bbox_to_anchor=(1, 1))
             plt.tight_layout()
             plt.show()
