@@ -1,4 +1,4 @@
-'''
+''' 
 Modified code from https://github.com/e-baumer/standard_precip/blob/master/standard_precip/base_sp.py
 - original --> new
 - Default df input: date as a column --> date as index
