@@ -12,7 +12,7 @@ from spi import SPI
 warnings.filterwarnings('ignore')
 
 class Compound:
-    def __init__(self, center, event, months, freq, scale, thres, gamma_n):
+    def __init__(self, center, event, months, freq, scale, thres, gamma_n=None):
         self.center = center
         self.event = event
         self.months = months
@@ -22,9 +22,6 @@ class Compound:
         self.gamma_n = gamma_n
         self.DATA_PATH = '../compound'
         
-        # self.COMP_OPS = {
-        #     '<': operator.lt, '<=': operator.le,
-        #     '>': operator.gt, '>=': operator.ge,}
         self.COMP_OPS = {
             '<': lambda df1, df2: df1.lt(df2),
             '<=': lambda df1, df2: df1.le(df2),
@@ -53,7 +50,7 @@ class Compound:
             self.temporal_res = 'monthly_avg'
             self.delta = datetime.timedelta(days=30 * scale)  # approximation for months
         else:
-            raise ValueError(f"{freq} should be one of ['D', 'M']")
+            raise ValueError(f'{freq} should be one of [D, M]')
 
         self.HISTORICAL_YEARS, self.SSP_YEARS, self.SPI_YEARS = None, None, None
         
@@ -174,10 +171,9 @@ class Compound:
                     df_ssp = df.xs(ssp, level='ssp')
                     p_ssp = thres_df.loc[ssp, p]
                     if p_ssp.empty:
-                        raise ValueError(f"No data found for {ssp} in thres_df")
+                        raise ValueError(f'No data found for {ssp} in thres_df')
                     c = self.COMP_OPS[op](df_ssp, p_ssp)
                     c.index = pd.MultiIndex.from_tuples([(ssp, i) for i in c.index], names=['ssp', 'date'])
-                    
                     cc.append(c)
                 compound.append(pd.concat(cc, axis=0))
             else:
@@ -235,7 +231,8 @@ class Compound:
             tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
             spi = pr.filter(regex='_spi$')
             dfs = pd.concat([spi, tm], axis=1)
-            groups = {'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
+            groups = {'daily': dfs,
+                      'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
                       'spi': self.group_data(spi, '_spi$').mean().reset_index(),
                       'tasmax': self.group_data(tm, '_tasmax$').mean().reset_index()
                       }
@@ -243,9 +240,10 @@ class Compound:
         elif self.event in ['CFE']:
             self.HISTORICAL_YEARS, self.SSP_YEARS = (1950, 2014), (2015, 2099)
             rzsm, tres_rzsm = self.process_rzsm() # ssp dailies, hist threshold
-            pr = self.filter_dates(self.process_pr(), self.SSP_YEARS, year_month=False)
+            pr = self.filter_dates(self.process_pr().rolling(self.scale).sum(), self.SSP_YEARS, year_month=False)
             dfs = pd.concat([rzsm, pr], axis=1)
-            groups = {'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
+            groups = {'daily': dfs,
+                      'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
                       'rzsm': self.group_data(rzsm, '_rzsm$').mean().reset_index(),
                       'tres_rzsm': tres_rzsm
                       }
