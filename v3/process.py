@@ -134,7 +134,7 @@ class Compound:
                         for ssp_file in ssp_files]
                       ).reset_index()
         # Use ssp245 data for 126 and 370
-        df = pd.concat([df, df.assign(ssp='ssp126').copy(), df.assign(ssp='ssp370').copy()]).dropna()
+        # df = pd.concat([df, df.assign(ssp='ssp126').copy(), df.assign(ssp='ssp370').copy()]).dropna()
         df = df.sort_values(['ssp', 'date']).set_index(['ssp', 'date']).add_suffix('_rzsm')
         hist_df = self.filter_dates(df, self.HISTORICAL_YEARS, False)
         ssp_df = self.filter_dates(df, self.SSP_YEARS, False)
@@ -222,7 +222,7 @@ class Compound:
     
     def main(self):
         # Process variables
-        tres_rzsm=None
+        tres_rzsm, cols = None, []
         if self.event in ['CWHE','CDHE']:
             self.HISTORICAL_YEARS, self.SSP_YEARS = (1981, 2020), (2021, 2100)
             self.SPI_YEARS = ((datetime.date(self.HISTORICAL_YEARS[0], 1, 1) - self.delta).year,
@@ -230,30 +230,33 @@ class Compound:
             pr = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
             tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
             spi = pr.filter(regex='_spi$')
-            dfs = pd.concat([spi, tm], axis=1)
+            dfs = pd.concat([spi, tm], axis=1).dropna()
             groups = {'daily': dfs,
                       'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
                       'spi': self.group_data(spi, '_spi$').mean().reset_index(),
                       'tasmax': self.group_data(tm, '_tasmax$').mean().reset_index()
                       }
+            cols = ['_pr', '_spi', '_tasmax']
             
         elif self.event in ['CFE']:
             self.HISTORICAL_YEARS, self.SSP_YEARS = (1950, 2014), (2015, 2099)
             rzsm, tres_rzsm = self.process_rzsm() # ssp dailies, hist threshold
             pr = self.filter_dates(self.process_pr().rolling(self.scale).sum(), self.SSP_YEARS, year_month=False)
-            dfs = pd.concat([rzsm, pr], axis=1)
+            dfs = pd.concat([rzsm, pr], axis=1).dropna()
             groups = {'daily': dfs,
                       'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
                       'rzsm': self.group_data(rzsm, '_rzsm$').mean().reset_index(),
                       'tres_rzsm': tres_rzsm
                       }
+            cols = ['_pr', '_rzsm']
             
         dfs = dfs.loc[:, ~dfs.columns.duplicated()]
-        
+
+        cols.extend(['_day_total', '_event_total', '_sequence_total', '_duration_max', '_duration_mean'])
         results, compounds = [], []
         for threshold in self.thresholds:
             print(threshold)
-            thres = '_'.join([f'{v}{c}{round(p, 1)}' for v, (c, p) in threshold.items()])
+            thres = '_'.join([f'{v}{c}{round(p, 2)}' for v, (c, p) in threshold.items()])
             compounds.append(self.process_compound(dfs, threshold, tres_rzsm))
             compounds[-1].insert(0, 'threshold', thres)  
             grouped = self.group_data(compounds[-1], f'_compound$')
@@ -272,9 +275,26 @@ class Compound:
             result.insert(0, 'threshold', thres)
             results.append(result)
         
-        results = pd.concat(results).reset_index()
-        compounds = pd.concat(compounds).reset_index()
-        return results, compounds, groups
+        results = pd.concat(results).reset_index().set_index([ 'threshold', 'ssp', 'date'])
+        groups['compound'] = pd.concat(compounds).reset_index()
+
+        aggs = [[], []]
+        for col in cols:
+            i = 0
+            df = results.filter(regex=col)
+            if df.shape[1]==0:
+                df = groups[col[1:]].set_index(['ssp', 'date'])
+                i = 1
+            aggs[i].extend([
+                df.mean(axis=1).rename(f'mean{col}'),
+                df.mean(axis=1).rename(f'med{col}'),
+                df.quantile(0.1, axis=1).rename(f'p10{col}'),
+                df.quantile(0.9, axis=1).rename(f'p90{col}'),
+            ])
+        metric_aggs = pd.concat(aggs[0], axis=1).reset_index()
+        var_aggs = pd.concat(aggs[1], axis=1).reset_index()
+            
+        return results.reset_index(), metric_aggs, var_aggs, groups
 
         
 
