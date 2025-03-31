@@ -154,8 +154,8 @@ class SPI():
 
         filtered = df[(df.index.year >= base_years[0]) & (df.index.year <= spi_years[1])]
         
-        print(f'--> filtered: {min(filtered.index.date)} to {max(filtered.index.date)}')
-        print(f'--> base: {base_years[0]} to {base_years[1]}')
+        # print(f'--> filtered: {min(filtered.index.date)} to {max(filtered.index.date)}')
+        # print(f'--> base: {base_years[0]} to {base_years[1]}')
 
         freq_map = {'D': '%m-%d', 'M': '%m'}
         if freq not in freq_map:

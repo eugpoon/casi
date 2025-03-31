@@ -12,15 +12,14 @@ from spi import SPI
 warnings.filterwarnings('ignore')
 
 class Compound:
-    def __init__(self, center, event, months, freq, scale, thres, gamma_n=None):
+    def __init__(self, center, event, var):
         self.center = center
         self.event = event
-        self.months = months
-        self.freq = freq
-        self.scale = scale
-        self.thres = thres
-        self.gamma_n = gamma_n
-        self.DATA_PATH = '../compound'
+        self.__dict__.update(var)
+        self.center, self.event = center, event
+        self.spi_years = None, None, None
+        
+        self.DATA_PATH = '../data/compound'
         
         self.COMP_OPS = {
             '<': lambda df1, df2: df1.lt(df2),
@@ -28,45 +27,42 @@ class Compound:
             '>': lambda df1, df2: df1.gt(df2),
             '>=': lambda df1, df2: df1.ge(df2),
         }
-        
-        if self.event in ['CWHE','CDHE']:
-            self.VARIABLES = ['pr_', 'tasmax_']
-        elif self.event in ['CFE']:
-            self.VARIABLES = ['pr_', 'rzsm_']
 
-        if self.thres[1]: # create all threshold combos
-            self.thresholds = [{key: (op, val[i]) for i, (key, (op, _)) in enumerate(self.thres[0].items())}
-                               for val in product(*[v[1] for v in self.thres[0].values()])]
+        if self.threshold[1]: # create all threshold combos
+            self.thresholds = [{key: (op, val[i]) for i, (key, (op, _)) in enumerate(self.threshold[0].items())}
+                               for val in product(*[v[1] for v in self.threshold[0].values()])]
         else:
-            if len(set([len(vals[1]) for vals in self.thres[0].values()])) > 1:
+            if len(set([len(vals[1]) for vals in self.threshold[0].values()])) > 1:
                 raise ValueError('All lists must have the same length')
-            self.thresholds = [{key: (op, vals[i]) for key, (op, vals) in self.thres[0].items()} 
-                   for i in range(len(next(iter(self.thres[0].values()))[1]))]
+            self.thresholds = [{key: (op, vals[i]) for key, (op, vals) in self.threshold[0].items()} 
+                   for i in range(len(next(iter(self.threshold[0].values()))[1]))]
             
-        if freq == 'D':
+        if self.freq == 'D':
             self.temporal_res = 'daily'
-            self.delta = datetime.timedelta(days=scale)
-        elif freq == 'M':
+            self.delta = datetime.timedelta(days=self.scale)
+        elif self.freq == 'M':
             self.temporal_res = 'monthly_avg'
-            self.delta = datetime.timedelta(days=30 * scale)  # approximation for months
+            self.delta = datetime.timedelta(days=30 * self.scale)  # approximation for months
         else:
-            raise ValueError(f'{freq} should be one of [D, M]')
-
-        self.HISTORICAL_YEARS, self.SSP_YEARS, self.SPI_YEARS = None, None, None
+            raise ValueError(f'{self.freq} should be one of [D, M]')
         
         self.files = self.get_files()
     
-        
-       
     ##################################################
     ##              Get and read files              ##
     ##################################################
     
     def get_files(self):
         '''Returns list of filenames in a directory that contain a specific string'''
-        return [os.path.join(self.DATA_PATH, f) for f in os.listdir(self.DATA_PATH) 
-                if self.center in f and f.endswith('.csv') and self.temporal_res in f
-                and any(v in f for v in self.VARIABLES)]
+        files = [os.path.join(self.DATA_PATH, f) for f in os.listdir(self.DATA_PATH) 
+                 if self.center in f and f.endswith('.csv') and self.temporal_res in f
+                 and any(v in f for v in self.inputs)]
+    
+        # Check if each variable is present in at least one file
+        for var in self.inputs:
+            if not any(var in f for f in files):
+                raise ValueError(f'No files found for variable {var}')
+        return files
 
     def validate_file_path(self, file_path: str) -> None:
         '''Validate if the file path exists.'''
@@ -106,14 +102,14 @@ class Compound:
         # Combine historical and ssp dataframes
         historical_df = self.read_data(hist_file)
         spi_dfs = {os.path.basename(ssp_file).split('_')[2].split('.')[0]: 
-                   self.filter_dates(pd.concat([historical_df, self.read_data(ssp_file)]), self.SPI_YEARS,
+                   self.filter_dates(pd.concat([historical_df, self.read_data(ssp_file)]), self.spi_years,
                                      year_month=False).dropna(how='all') * 86400 # pr to mm/day
                    for ssp_file in ssp_files}
 
         # Calculate SPI
         for ssp_name, df in spi_dfs.items():
-            print(f'Processing {ssp_name} spi ({min(df.index.date)} to {max(df.index.date)})...') 
-            spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, self.HISTORICAL_YEARS, self.SPI_YEARS,
+            # print(f'Processing {ssp_name} spi ({min(df.index.date)} to {max(df.index.date)})...') 
+            spi_dfs[ssp_name] = pd.concat([SPI().calculate(df, self.historical_years, self.spi_years,
                     self.months, freq=self.freq, scale=self.scale, gamma_n=self.gamma_n),
                     df.add_suffix('_pr')], axis=1)
         
@@ -135,10 +131,16 @@ class Compound:
                       ).reset_index()
         # Use ssp245 data for 126 and 370
         # df = pd.concat([df, df.assign(ssp='ssp126').copy(), df.assign(ssp='ssp370').copy()]).dropna()
+        '''
+        ##################################################
+        REMOVE LINE ABOVE
+        ##################################################
+        '''
+        
         df = df.sort_values(['ssp', 'date']).set_index(['ssp', 'date']).add_suffix('_rzsm')
-        hist_df = self.filter_dates(df, self.HISTORICAL_YEARS, False)
-        ssp_df = self.filter_dates(df, self.SSP_YEARS, False)
-        thres_df = hist_df.groupby('ssp').quantile(self.thres[0]['rzsm'][1])
+        hist_df = self.filter_dates(df, self.historical_years, False)
+        ssp_df = self.filter_dates(df, self.ssp_years, False)
+        thres_df = hist_df.groupby('ssp').quantile(self.threshold[0]['rzsm'][1])
         return ssp_df, thres_df
 
     def process_pr(self):
@@ -222,40 +224,40 @@ class Compound:
     
     def main(self):
         # Process variables
-        tres_rzsm, cols = None, []
+        tres_rzsm = None
         if self.event in ['CWHE','CDHE']:
-            self.HISTORICAL_YEARS, self.SSP_YEARS = (1981, 2020), (2021, 2100)
-            self.SPI_YEARS = ((datetime.date(self.HISTORICAL_YEARS[0], 1, 1) - self.delta).year,
-                              self.SSP_YEARS[1])
-            pr = self.filter_dates(self.process_spi(), self.SSP_YEARS, year_month=True)
-            tm = self.filter_dates(self.process_tasmax(), self.SSP_YEARS, year_month=True)
+            self.historical_years, self.ssp_years = (1981, 2020), (2021, 2100)
+            self.spi_years = ((datetime.date(self.historical_years[0], 1, 1) - self.delta).year,
+                              self.ssp_years[1])
+            pr = self.filter_dates(self.process_spi(), self.ssp_years, year_month=True)
+            tm = self.filter_dates(self.process_tasmax(), self.ssp_years, year_month=True)
             spi = pr.filter(regex='_spi$')
             dfs = pd.concat([spi, tm], axis=1).dropna()
-            groups = {'daily': dfs,
+
+            groups = {'daily':  pd.concat([spi, spi.mean(axis=1).rename(f'mean_spi'), 
+                                           tm,  tm.mean(axis=1).rename(f'mean_tasmax')], axis=1),
                       'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
                       'spi': self.group_data(spi, '_spi$').mean().reset_index(),
                       'tasmax': self.group_data(tm, '_tasmax$').mean().reset_index()
                       }
-            cols = ['_pr', '_spi', '_tasmax']
             
         elif self.event in ['CFE']:
-            self.HISTORICAL_YEARS, self.SSP_YEARS = (1950, 2014), (2015, 2099)
+            self.historical_years, self.ssp_years = (1950, 2014), (2015, 2099)
             rzsm, tres_rzsm = self.process_rzsm() # ssp dailies, hist threshold
-            pr = self.filter_dates(self.process_pr().rolling(self.scale).sum(), self.SSP_YEARS, year_month=False)
+            pr = self.filter_dates(self.process_pr().rolling(self.scale).sum(), self.ssp_years, year_month=False)
             dfs = pd.concat([rzsm, pr], axis=1).dropna()
-            groups = {'daily': dfs,
+            groups = {'daily': pd.concat([rzsm, rzsm.mean(axis=1).rename(f'mean_rzsm'),
+                                          pr,   pr.mean(axis=1).rename(f'mean_pr')], axis=1),
                       'pr': self.group_data(pr.filter(regex='_pr$'), '_pr$').mean().reset_index(),
                       'rzsm': self.group_data(rzsm, '_rzsm$').mean().reset_index(),
                       'tres_rzsm': tres_rzsm
                       }
-            cols = ['_pr', '_rzsm']
             
         dfs = dfs.loc[:, ~dfs.columns.duplicated()]
 
-        cols.extend(['_day_total', '_event_total', '_sequence_total', '_duration_max', '_duration_mean'])
         results, compounds = [], []
         for threshold in self.thresholds:
-            print(threshold)
+            # print(threshold)
             thres = '_'.join([f'{v}{c}{round(p, 2)}' for v, (c, p) in threshold.items()])
             compounds.append(self.process_compound(dfs, threshold, tres_rzsm))
             compounds[-1].insert(0, 'threshold', thres)  
@@ -279,7 +281,7 @@ class Compound:
         groups['compound'] = pd.concat(compounds).reset_index()
 
         aggs = [[], []]
-        for col in cols:
+        for col in self.outputs:
             i = 0
             df = results.filter(regex=col)
             if df.shape[1]==0:
@@ -287,14 +289,13 @@ class Compound:
                 i = 1
             aggs[i].extend([
                 df.mean(axis=1).rename(f'mean{col}'),
-                df.mean(axis=1).rename(f'med{col}'),
+                df.median(axis=1).rename(f'med{col}'),
                 df.quantile(0.1, axis=1).rename(f'p10{col}'),
                 df.quantile(0.9, axis=1).rename(f'p90{col}'),
             ])
-        metric_aggs = pd.concat(aggs[0], axis=1).reset_index()
-        var_aggs = pd.concat(aggs[1], axis=1).reset_index()
-            
-        return results.reset_index(), metric_aggs, var_aggs, groups
+        results = pd.concat([results]+aggs[0], axis=1).reset_index()
+        var_aggs = pd.concat(aggs[1], axis=1).reset_index()         
+        return results, var_aggs, groups
 
         
 
