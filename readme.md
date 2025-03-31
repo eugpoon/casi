@@ -1,5 +1,3 @@
-# https://eugpoon.github.io/compound.html
-
 conda env create -f environment.yaml -n casi
 
 # V3 (in progess)
