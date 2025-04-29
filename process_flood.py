@@ -29,13 +29,13 @@ def get_stations(stations, output_dir='data'):
     noaa.to_csv(f'{output_dir}/noaa_tc.csv', index=False)
 
 def clean_date(date_str):
-    """Convert ISO datetime string to YYYYMMDD format."""
+    '''Convert ISO datetime string to YYYYMMDD format.'''
     return datetime.fromisoformat(date_str).strftime('%Y%m%d')
 
 def fetch_and_process_station_data(station_id, start_date, end_date, product, 
                                   datum=None, rename_cols=None, filter_cols=None, 
                                   output_path=None):
-    """Generic function to fetch and process data for any station type."""
+    '''Generic function to fetch and process data for any station type.'''
     try:
         start_date = clean_date(start_date)
         end_date = clean_date(end_date)
@@ -64,15 +64,15 @@ def fetch_and_process_station_data(station_id, start_date, end_date, product,
             
         return data
     except Exception as e:
-        print(f"Failed for station {station_id}: {e}")
+        print(f'Failed for station {station_id}: {e}')
         return None
 
 def circular_mean(deg_series):
-    """Calculate circular mean for directional data."""
+    '''Calculate circular mean for directional data.'''
     return circmean(deg_series.dropna(), high=360, low=0)
 
 def process_wind_data(wind_df, output_dir='data'):
-    """ Process all wind stations.
+    ''' Process all wind stations.
         Field	Description
         t	    Time - Date and time of the observation
         s	    Speed - Measured wind speed
@@ -83,34 +83,34 @@ def process_wind_data(wind_df, output_dir='data'):
                 -- (X) A flag that when set to 1 indicates that the maximum wind speed was exceeded
                 -- (R) A flag that when set to 1 indicates that the rate of change tolerance limit was exceeded
 
-    """
+    '''
     for _, row in wind_df.iterrows():
         fetch_and_process_station_data(
             row.station_id, row.start_date, row.end_date, 
             product='wind',
             rename_cols={'s':'speed', 'd':'dirdeg', 'dr':'dir', 'g':'gust', 'f':'flag'},
             filter_cols=['s', 'd', 'g'],
-            output_path=f"{output_dir}/noaa_tc.wind.{row.station_id}.parquet"
+            output_path=f'{output_dir}/noaa_tc.wind.{row.station_id}.parquet'
         )
 
 def aggregate_wind_data(wind_stations, output_dir='data'):
-    """Aggregate wind data across stations."""
+    '''Aggregate wind data across stations.'''
     wind_dfs = []
     for station_id in wind_stations:
         try:
             df = pd.read_parquet(f'{output_dir}/noaa_tc.wind.{station_id}.parquet').replace('', np.nan)
-            df = df[(df.dirdeg >= 0) & (df.dirdeg <= 360) & (df.gust >= df.speed)]
+            df = df[(df.dirdeg >= 0) & (df.dirdeg <= 360) & (df.gust >= df.speed) & (df.gust >= 0) &  (df.speed >= 0)]
             
             # Resample hourly
             df = pd.concat([
-                df[['speed', 'gust']].resample('h').max(),
-                df['dirdeg'].resample('h').apply(circular_mean),
-                df.select_dtypes(exclude='number').resample('h').apply(lambda x: x.mode()[0] if not x.empty else np.nan)
+                df[['speed', 'gust']].resample('d').mean(),
+                df['dirdeg'].resample('d').apply(circular_mean),
+                df.select_dtypes(exclude='number').resample('d').apply(lambda x: x.mode()[0] if not x.empty else np.nan)
             ], axis=1)
             
             wind_dfs.append(df.add_suffix(f'_{station_id}'))
         except Exception as e:
-            print(f"Error aggregating wind data for {station_id}: {e}")
+            print(f'Error aggregating wind data for {station_id}: {e}')
     
     if wind_dfs:
         result = pd.concat(wind_dfs, axis=1)
@@ -119,7 +119,7 @@ def aggregate_wind_data(wind_stations, output_dir='data'):
     return None
 
 def process_water_data(water_df, output_dir='data'):
-    """ Process tides and water level data.
+    ''' Process tides and water level data.
         High Low Tides
         Field	Description
         t	    Time - Date and time of the observation
@@ -146,7 +146,7 @@ def process_water_data(water_df, output_dir='data'):
         q	    Quality Assurance/Quality Control level
                 -- p = preliminary
                 -- v = verified
-    """
+    '''
     # Process tides
     for _, row in water_df.iterrows():
         fetch_and_process_station_data(
@@ -154,7 +154,7 @@ def process_water_data(water_df, output_dir='data'):
             product='high_low', datum='MSL',
             rename_cols={'v':'msl', 'ty':'type', 'f':'flag'},
             filter_cols=['ty'],
-            output_path=f"{output_dir}/noaa_tc.tides.{row.station_id}.parquet"
+            output_path=f'{output_dir}/noaa_tc.tides.{row.station_id}.parquet'
         )
         
         # Process water levels
@@ -164,11 +164,11 @@ def process_water_data(water_df, output_dir='data'):
                 product='water_level', datum=var.upper(),
                 rename_cols={'v':var, 's':'sigma', 'f':'flag', 'q':'quality'},
                 filter_cols=['v'],
-                output_path=f"{output_dir}/noaa_tc.waterlevel.{var}.{row.station_id}.parquet"
+                output_path=f'{output_dir}/noaa_tc.waterlevel.{var}.{row.station_id}.parquet'
             )
 
 def aggregate_water_data(water_stations, output_dir='data'):
-    """Aggregate water data across stations."""
+    '''Aggregate water data across stations.'''
     water_dfs = []
     for station_id in water_stations:
         try:
@@ -184,11 +184,14 @@ def aggregate_water_data(water_stations, output_dir='data'):
             msl = msl[(msl.sigma <= 3) & (msl.quality=='v')]
             
             # Combine and resample
-            combined = pd.concat([msl.msl, mhhw.mhhw, tide.type], axis=1).resample('h').max()
-            water_dfs.append(combined.dropna(subset=['msl', 'mhhw'], how='all')
-                            .add_suffix(f'_{station_id}'))
+            combined = pd.concat([msl.msl.resample('d').mean(), 
+                                  mhhw.mhhw.resample('d').mean(), 
+                                  tide.type.resample('d').apply(lambda x: x.mode().max())], axis=1)
+
+            water_dfs.append(combined.dropna(subset=['msl', 'mhhw'], how='all').add_suffix(f'_{station_id}'))
+
         except Exception as e:
-            print(f"Error aggregating water data for {station_id}: {e}")
+            print(f'Error aggregating water data for {station_id}: {e}')
     
     if water_dfs:
         result = pd.concat(water_dfs, axis=1)
@@ -201,7 +204,7 @@ def main(output_dir='data'):
     #      NOAA        #
     ####################
     stations = [8637689, 8638610, 8638901, 8638614, 8638511, 8637624, 8638595]
-    stations = [8638901]
+    # stations = [8638901]
     get_stations(stations, output_dir)
 
     noaa = pd.read_csv(f'{output_dir}/noaa_tc.csv')
@@ -211,62 +214,62 @@ def main(output_dir='data'):
     wind_stations, water_stations = wind.station_id.values, water.station_id.values
 
     # Wind data
-    print('Wind')
-    process_wind_data(wind, output_dir)
-    wind_data = aggregate_wind_data(wind_stations, output_dir)
+    # print('Wind')
+    # process_wind_data(wind, output_dir)
+    # wind_data = aggregate_wind_data(wind_stations, output_dir)
 
     # Water data
     print('Water')
     process_water_data(water, output_dir)
     water_data = aggregate_water_data(water_stations, output_dir)
 
-    ####################
-    #    Meteostat     #
-    ####################
-    print('Meteostat')
-    met_stations = Stations().nearby(37.0862, -76.3809).fetch(1)
-    met_stations = met_stations[met_stations.distance <= 30000]  # km
-    met_stations.to_csv(f'{output_dir}/meteo.csv')
+    # ####################
+    # #    Meteostat     #
+    # ####################
+    # print('Meteostat')
+    # met_stations = Stations().nearby(37.0862, -76.3809).fetch(10)
+    # met_stations = met_stations[met_stations.distance <= 30000]  # km
+    # met_stations.to_csv(f'{output_dir}/meteo.csv')
 
-    for station_id, row in met_stations.iterrows():
-        print(station_id)
-        dd = Hourly(station_id, row.hourly_start, row.hourly_end).fetch()
-        dd = dd.dropna(axis=1, how='all')
-        dd.to_parquet(f'{output_dir}/meteo.{station_id}.parquet')
+    # for station_id, row in met_stations.iterrows():
+    #     print(station_id)
+    #     dd = Hourly(station_id, row.hourly_start, row.hourly_end).fetch()
+    #     dd = dd.dropna(axis=1, how='all')
+    #     dd.to_parquet(f'{output_dir}/meteo.{station_id}.parquet')
 
-    meteo = pd.read_csv(f'{output_dir}/meteo.csv')
-    meteo_df = []
-    for station_id in meteo.id:
-        print(station_id)
-        dd = (pd.read_parquet(f'{output_dir}/meteo.{station_id}.parquet')[['prcp', 'wdir', 'wspd']]
-              .dropna(how='all').rename(columns={'prcp': 'pr', 'wdir': 'dir', 'wspd': 'speed'}))
-        dd.speed = dd.speed / 3.6  # km/h to m/s
-        meteo_df.append(dd.add_suffix(f'_{station_id}'))
-    meteo_df = pd.concat(meteo_df, axis=1)
-    meteo_df.to_parquet(f'{output_dir}/meteo.pr_wind.parquet')
+    # meteo = pd.read_csv(f'{output_dir}/meteo.csv')
+    # meteo_df = []
+    # for station_id in meteo.id:
+    #     print(station_id)
+    #     dd = (pd.read_parquet(f'{output_dir}/meteo.{station_id}.parquet')[['prcp', 'wdir', 'wspd']]
+    #           .dropna(how='all').rename(columns={'prcp': 'pr', 'wdir': 'dir', 'wspd': 'speed'}))
+    #     dd.speed = dd.speed / 3.6  # km/h to m/s
+    #     meteo_df.append(dd.add_suffix(f'_{station_id}'))
+    # meteo_df = pd.concat(meteo_df, axis=1)
+    # meteo_df.to_parquet(f'{output_dir}/meteo.pr_wind.parquet')
 
-    ####################
-    #      CMIP6       #
-    ####################
-    print('CMIP6')
-    files = ['LARC_pr_historical_daily.csv', 'LARC_pr_ssp126_daily.csv', 'LARC_pr_ssp245_daily.csv',
-             'LARC_pr_ssp370_daily.csv', 'LARC_sfcWind_historical_daily.csv', 'LARC_sfcWind_ssp245_daily.csv']
-    cmip_df = {}
-    for file in files:
-        name, scenario = file.split('_')[1:3]
-        dd = (pd.read_csv(f'data/compound/{file}')
-              .rename(columns={'Unnamed: 0': 'date'})
-              .assign(date=lambda d: pd.to_datetime(d['date']), scenario=scenario)
-              .set_index(['scenario', 'date']).add_prefix(f'{name.lower()}_'))
-        if name == 'pr':
-            dd *= 86400
-        dd.columns = dd.columns.str.lower()
-        cmip_df.setdefault(name.lower(), []).append(dd)
+    # ####################
+    # #      CMIP6       #
+    # ####################
+    # print('CMIP6')
+    # files = ['LARC_pr_historical_daily.csv', 'LARC_pr_ssp126_daily.csv', 'LARC_pr_ssp245_daily.csv',
+    #          'LARC_pr_ssp370_daily.csv', 'LARC_sfcWind_historical_daily.csv', 'LARC_sfcWind_ssp245_daily.csv']
+    # cmip_df = {}
+    # for file in files:
+    #     name, scenario = file.split('_')[1:3]
+    #     dd = (pd.read_csv(f'data/compound/{file}')
+    #           .rename(columns={'Unnamed: 0': 'date'})
+    #           .assign(date=lambda d: pd.to_datetime(d['date']), scenario=scenario)
+    #           .set_index(['scenario', 'date']).add_prefix(f'{name.lower()}_'))
+    #     if name == 'pr':
+    #         dd *= 86400
+    #     dd.columns = dd.columns.str.lower()
+    #     cmip_df.setdefault(name.lower(), []).append(dd)
 
-    cmip_df = pd.concat([pd.concat(v) for v in cmip_df.values()], axis=1)
-    cmip_df.to_parquet(f'{output_dir}/cmip.pr_wind.parquet')
+    # cmip_df = pd.concat([pd.concat(v) for v in cmip_df.values()], axis=1)
+    # cmip_df.to_parquet(f'{output_dir}/cmip.pr_wind.parquet')
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--output_dir', default='data', help='Output directory for saved data')
     args = parser.parse_args()
