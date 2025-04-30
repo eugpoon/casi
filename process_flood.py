@@ -236,8 +236,9 @@ def main(output_dir='data'):
         dd = Hourly(station_id, row.hourly_start, row.hourly_end).fetch()
         dd = dd.dropna(axis=1, how='all')
         dd = pd.concat([
-                dd.drop(columns=['wdir']).resample('d').mean(),
-                dd['wdir'].resample('d').apply(circular_mean),
+                dd.prcp.resample('d').sum(),
+                dd.wdir.resample('d').apply(circular_mean),
+                dd.drop(columns=['wdir', 'prcp']).resample('d').mean(),
             ], axis=1)
         dd.to_parquet(f'{output_dir}/meteo.{station_id}.parquet')
 
@@ -252,9 +253,9 @@ def main(output_dir='data'):
     meteo_df = pd.concat(meteo_df, axis=1)
     meteo_df.to_parquet(f'{output_dir}/meteo.pr_wind.parquet')
 
-    ####################
-    #      CMIP6       #
-    ####################
+    ###################
+         CMIP6       #
+    ###################
     print('CMIP6')
     files = ['LARC_pr_historical_daily.csv', 'LARC_pr_ssp126_daily.csv', 'LARC_pr_ssp245_daily.csv',
              'LARC_pr_ssp370_daily.csv', 'LARC_sfcWind_historical_daily.csv', 'LARC_sfcWind_ssp245_daily.csv']
