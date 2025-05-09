@@ -47,7 +47,7 @@ class SPI():
     def rolling_window_sum(df: pd.DataFrame, span: int=1, window_type: str=None,
                            center: bool=False, **kwargs):
         return df.rolling(window=span, win_type=window_type, center=center, **kwargs
-                         ).sum().add_suffix(f'_roll{span}')
+                         ).sum()#.add_suffix(f'_roll{span}')
 
     def fit_distribution(self, data: pd.DataFrame, dist_type: str, fit_type: str='lmom', **kwargs):
         '''
@@ -145,14 +145,14 @@ class SPI():
         return pd.concat(slices, ignore_index=False)
 
     def calculate(self, df: pd.DataFrame, base_years:tuple, spi_years:tuple, months:list, freq: str='D', 
-                  scale: int=1, gamma_n:int=10, fit_type: str='lmom', dist_type: str='gam', 
+                  n: int=1, gamma_n:int=10, fit_type: str='lmom', dist_type: str='gam', 
                   **dist_kwargs) -> pd.DataFrame:
         column = df.columns
         
-        if scale > 1:
-            df = self.rolling_window_sum(df, scale)
+        if n > 1:
+            df = self.rolling_window_sum(df, n)
 
-        filtered = df[(df.index.year >= base_years[0]) & (df.index.year <= spi_years[1])]
+        filtered = df[(df.index.year >= base_years[0]) & (df.index.year <= spi_years[1])].copy()
         
         # print(f'--> filtered: {min(filtered.index.date)} to {max(filtered.index.date)}')
         # print(f'--> base: {base_years[0]} to {base_years[1]}')
@@ -170,7 +170,7 @@ class SPI():
         
         dfs = []
         for j in freq_range:
-            precip = filtered.loc[(filtered.index.year > base_years[1]) & 
+            precip = filtered.loc[(filtered.index.year >= spi_years[0]) & 
                                   (filtered[freq] == j)].drop(columns=freq).dropna()
 
             # Fit distribution using only baseline period data
@@ -182,8 +182,8 @@ class SPI():
             # Calculate SPI
             spi = self.cdf_to_ppf(precip, params_df)
             spi.columns = column
-            dfs.append(spi.add_suffix('_spi'))
+            dfs.append(spi)
         
-        return filtered.merge(pd.concat(dfs, axis=0), left_index=True, right_index=True).drop(columns=freq)
+        return pd.concat(dfs)
             
 
