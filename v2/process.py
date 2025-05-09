@@ -20,7 +20,7 @@ class Compound:
         self.scale = scale
         self.thresholds = thresholds
         self.gamma_n = gamma_n
-        self.DATA_PATH = '../compound'
+        self.DATA_PATH = '../data/compound'
         self.VARIABLES = ['pr_', 'tasmax_']
         self.COMP_OPS = {
             '<': operator.lt, '<=': operator.le,
