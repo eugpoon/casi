@@ -8,14 +8,14 @@
 
 ### Contents
 
-* `center_projections.ipynb`: Run this notebook to generate an Excel summary of risk data using input from a ZIP file.
+* `center_projections.ipynb`: Run this notebook to generate an Excel summary using input from a ZIP file.
 
 ---
 
 ### Extract Individual Center Worksheets from a Combined PDF
 
 1. **Export Slides to PDF**
-   Export all center worksheets from your slide deck (e.g., Google Slides or PowerPoint) into a single PDF file.
+   Export all center worksheets from slides into a single PDF file (excluding skipped slides).
 
 2. **Split the Combined PDF into Individual PDFs**
 
