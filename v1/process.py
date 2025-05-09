@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 global CENTER, EVENT, MONTHS
 CENTER, EVENT, MONTHS = '', '', []
 
-DATA_PATH = '../compound'
+DATA_PATH = '../data/compound'
 HIST = (1961, 1990) # Historical range
 TEMPORAL_RES = ['daily', 'monthly_avg', 'annual_avg'][0] # Temporal resolution 
 VARIABLES = ['pr_', 'tasmax_']
