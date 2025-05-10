@@ -1,0 +1,84 @@
+{
+  "CDHE": {
+    "months": [6, 7, 8],
+    "outputs": ["_pr", "_spi", "_tasmax", "_day_total", "_event_total", "_sequence_total", "_duration_max", "_duration_mean"],
+    "base_years": [1981, 2020],
+    "threshold": [
+      {
+        "spi": { "type": "fixed", "op": "<", "values": [-1, -2] },
+        "tasmax": { "type": "fixed", "op": ">", "values": [32.22222222222222] }
+      },
+      true
+    ]
+  },
+  "CWHE": {
+    "months": [6, 7, 8],
+    "outputs": ["_pr", "_spi", "_tasmax", "_day_total", "_event_total", "_sequence_total", "_duration_max", "_duration_mean"],
+    "base_years": [1981, 2020],
+    "threshold": [
+      {
+        "spi": { "type": "fixed", "op": ">", "values": [-1, -2] },
+        "tasmax": { "type": "fixed", "op": ">", "values": [32.22222222222222] }
+      },
+      true
+    ]
+  },
+  "CFE": {
+    "months": null,
+    "outputs": ["_pr", "_rzsm", "_day_total", "_event_total", "_sequence_total", "_duration_max", "_duration_mean"],
+    "base_years": [1950, 2014],
+    "threshold": [
+      {
+        "rzsm": { "type": "perc", "op": ">", "values": [0.7, 0.8, 0.9, 0.95, 0.98] },
+        "pr": { "type": "fixed", "op": ">", "values": [80] }
+      },
+      true
+    ]
+  },
+  "flood": {
+    "months": null,
+    "outputs": ["_day_total"],
+    "base_years": [1950, 2014],
+    "threshold": [
+      {
+        "rzsm": { "type": "perc", "op": ">", "values": [0.7, 0.8, 0.9, 0.95, 0.98] }
+      },
+      false
+    ]
+  },
+  "drought": {
+    "months": null,
+    "outputs": ["_day_total"],
+    "base_years": [1950, 2014],
+    "threshold": [
+      {
+        "rzsm": { "type": "perc", "op": "<", "values": [0.3, 0.2, 0.1, 0.05, 0.02] }
+      },
+      false
+    ]
+  },
+  "CWHE2": {
+    "months": null,
+    "outputs": ["_rzsm", "_tasmax", "_day_total", "_event_total", "_sequence_total", "_duration_max", "_duration_mean"],
+    "base_years": [1981, 2020],
+    "threshold": [
+      {
+        "rzsm": { "type": "perc", "op": ">", "values": [0.7, 0.8, 0.9, 0.95, 0.98] },
+        "tasmax": { "type": "fixed", "op": ">", "values": [32.22222222222222] }
+      },
+      true
+    ]
+  },
+  "CDHE2": {
+    "months": null,
+    "outputs": ["_rzsm", "_tasmax", "_day_total", "_event_total", "_sequence_total", "_duration_max", "_duration_mean"],
+    "base_years": [1981, 2020],
+    "threshold": [
+      {
+        "rzsm": { "type": "perc", "op": "<", "values": [0.3, 0.2, 0.1, 0.05, 0.02] },
+        "tasmax": { "type": "fixed", "op": ">", "values": [32.22222222222222] }
+      },
+      true
+    ]
+  }
+}

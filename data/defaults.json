@@ -1,0 +1,11 @@
+{
+  "centers": ["AFRC", "AMES", "GISS", "GRC", "GSFC", "JPL", "JSC", 
+	      "KSC", "LARC", "MAF", "MSFC", "SSC", "WFF", "WSTF"],
+  "ssps": ["ssp126", "ssp245", "ssp370", "historical"],
+  "spi_base": [1981, 2020],
+  "spi_ssp": [1981, 2100],
+  "spi_months": [6, 7, 8],
+  "spi_freq": "D",
+  "spi_n": 3,
+  "spi_gamma_n": 10
+}
