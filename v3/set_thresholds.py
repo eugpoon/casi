@@ -1,47 +1,67 @@
+"""
+Compute percentile-based thresholds for compound events using CMIP6 data.
+
+Usage:
+    python set_thresholds.py -i ../data/compound_raw.parquet -o ../data/compound_thresholds.csv
+"""
+
 import pandas as pd
 import json
 import argparse
 
+# Load threshold rules for each event (e.g., CDHE, CWHE) from JSON
 with open('../data/compound_events.json') as f:
     THRESHOLDS = json.load(f)
 
+# Load default global configuration values (e.g., centers, SPI params)
 with open('../data/defaults.json') as f:
     globals().update(json.load(f))
 
 def set_thresholds(df):
+    """
+    Compute percentile thresholds for each variable and event, based on configuration.
+
+    Parameters:
+        df (pd.DataFrame): Combined CMIP6 data including columns ['center', 'variable', 'ssp', 'date', ...]
+
+    Returns:
+        pd.DataFrame: DataFrame containing thresholds per center, variable, SSP, and percentile
+    """
+
     computed, results = {}, []
 
     for event, config in THRESHOLDS.items():
         print(event)
         rule, base_years = config['threshold'][0], config['base_years']
-        dd = df[df['date'].dt.year.between(*base_years)]
+        dd = df.copy()
         if config.get('months'):
-            dd = dd[dd['date'].dt.month.isin(config.get('months'))]
+            dd = df[df['date'].dt.month.isin(config['months'])]
 
         for var, t in rule.items():
-            ttype = t['type']
-            values = t['values']
-            
-            if ttype == 'perc':
-                for ssp in ssps[:-1]:
-                    subset = dd[(dd['ssp']==ssp) & (dd['variable'] == var)]
-                    if subset.empty: 
-                        continue
-                    subset = pd.concat([subset, (dd[(dd['ssp'].str.contains('historical')) & (dd['variable'] == var)]
-                                                )]).drop(columns=['variable', 'ssp', 'date'])
-                    name = f'{var}{base_years}'
-                    v_remain =  list(set(values) - computed.get(name, set()))
-                    subset = subset.groupby(['center']).quantile(v_remain).reset_index().rename(columns={'level_1': 'percentile'})
-                    subset['base'], subset['ssp'], subset['variable'] = f'{base_years}', ssp, var
-                    results.append(subset)
-                    computed.setdefault(name, set()).update(v_remain)
-            # elif ttype == 'fixed':
-            #     for v in values:
-            #         subset = pd.DataFrame(v, columns=dd.columns, index=centers).drop(columns=['center', 'date'])
-            #         subset['ssp'], subset['variable'], = None, var
-            #         results.append(subset.reset_index().rename(columns={'index': 'center'}))
-            else:
+            if t['type'] != 'perc':
                 continue
+            dd_ = dd[(dd['variable'] == var)].copy()
+
+            # Loop over each SSP scenario
+            for ssp in sorted(filter(lambda x: 'ssp' in x, dd_['ssp'].unique())):
+                # Filter for historical + target SSP and base year window
+                subset = (dd_[(dd_.ssp.str.contains(f'{ssp}|historical')) & (dd_['date'].dt.year.between(*base_years))]
+                          .drop(columns=['variable', 'ssp', 'date']))
+                if subset.empty:
+                    continue
+                
+                # Skip percentiles already computed
+                key = (var, str(base_years), ssp)
+                v_remain = list(set(t['values']) - computed.get(key, set()))
+                if not v_remain:
+                    continue
+                
+                # Compute quantiles per center
+                subset = subset.groupby('center').quantile(v_remain).reset_index().rename(columns={'level_1': 'percentile'})
+                subset['base'], subset['ssp'], subset['variable'] = str(base_years), ssp, var
+
+                results.append(subset)
+                computed.setdefault(key, set()).update(v_remain)
 
     return pd.concat(results, ignore_index=True)
 

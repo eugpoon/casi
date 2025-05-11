@@ -45,6 +45,7 @@ dependencies:
   - beautifulsoup4=4.13.4=pyha770c72_0
   - bleach=6.2.0=pyh29332c3_4
   - bleach-with-css=6.2.0=h82add2a_4
+  - blinker=1.9.0=pyhff2d567_0
   - blosc=1.21.6=h7dd00d9_1
   - botocore=1.37.1=pyge310_1234567_0
   - bottleneck=1.4.2=py313hde99e4e_0
@@ -55,10 +56,10 @@ dependencies:
   - brotli-python=1.1.0=py313h3579c5c_2
   - bzip2=1.0.8=h99b78c6_7
   - c-ares=1.34.5=h5505292_0
-  - ca-certificates=2025.1.31=hbd8a1cb_1
+  - ca-certificates=2025.4.26=hbd8a1cb_0
   - cached-property=1.5.2=hd8ed1ab_1
   - cached_property=1.5.2=pyha770c72_1
-  - certifi=2025.1.31=pyhd8ed1ab_0
+  - certifi=2025.4.26=pyhd8ed1ab_0
   - cffi=1.17.1=py313hc845a76_0
   - charset-normalizer=3.4.1=pyhd8ed1ab_0
   - click=8.1.8=pyh707e725_0
@@ -70,12 +71,14 @@ dependencies:
   - contourpy=1.3.2=py313h0ebd0e5_0
   - cramjam=2.10.0=py313ha9755b1_0
   - cycler=0.12.1=pyhd8ed1ab_1
+  - dash-bootstrap-components=2.0.2=pyhd8ed1ab_0
   - dask-core=2025.4.1=pyhd8ed1ab_0
   - dataretrieval=1.0.11=pyhd8ed1ab_0
   - dav1d=1.2.1=hb547adb_0
   - debugpy=1.8.14=py313h928ef07_0
   - decorator=5.2.1=pyhd8ed1ab_0
   - defusedxml=0.7.1=pyhd8ed1ab_0
+  - editables=0.5=pyhd8ed1ab_1
   - et_xmlfile=2.0.0=pyhd8ed1ab_1
   - exceptiongroup=1.2.2=pyhd8ed1ab_1
   - executing=2.2.0=pyhd8ed1ab_0
@@ -102,6 +105,7 @@ dependencies:
   - h11=0.16.0=pyhd8ed1ab_0
   - h2=4.2.0=pyhd8ed1ab_0
   - h5py=3.13.0=nompi_py313hcdf59df_100
+  - hatchling=1.27.0=pypyhd8ed1ab_0
   - hdf5=1.14.3=nompi_ha698983_109
   - hpack=4.1.0=pyhd8ed1ab_0
   - html5lib=1.1=pyhd8ed1ab_2
@@ -118,6 +122,7 @@ dependencies:
   - ipython_pygments_lexers=1.1.1=pyhd8ed1ab_0
   - ipywidgets=8.1.6=pyhd8ed1ab_0
   - isoduration=20.11.0=pyhd8ed1ab_1
+  - itsdangerous=2.2.0=pyhd8ed1ab_1
   - jedi=0.19.2=pyhd8ed1ab_1
   - jinja2=3.1.6=pyhd8ed1ab_0
   - jmespath=1.0.1=pyhd8ed1ab_1
@@ -231,7 +236,7 @@ dependencies:
   - numpy=2.2.5=py313h41a2e72_0
   - openjpeg=2.5.3=h8a3d83b_0
   - openpyxl=3.1.5=py313h90caf49_1
-  - openssl=3.5.0=h81ee809_0
+  - openssl=3.5.0=h81ee809_1
   - orc=2.1.1=hd90e43c_1
   - overrides=7.7.0=pyhd8ed1ab_1
   - packaging=25.0=pyh29332c3_1
@@ -240,6 +245,7 @@ dependencies:
   - pandocfilters=1.5.0=pyhd8ed1ab_0
   - parso=0.8.4=pyhd8ed1ab_1
   - partd=1.4.2=pyhd8ed1ab_0
+  - pathspec=0.12.1=pyhd8ed1ab_1
   - patsy=1.0.1=pyhd8ed1ab_1
   - pcre2=10.44=h297a79d_2
   - pexpect=4.9.0=pyhd8ed1ab_1
@@ -249,6 +255,7 @@ dependencies:
   - pkgutil-resolve-name=1.3.10=pyhd8ed1ab_2
   - platformdirs=4.3.7=pyh29332c3_0
   - plotly=6.0.1=pyhd8ed1ab_0
+  - pluggy=1.5.0=pyhd8ed1ab_1
   - proj=9.6.0=h1318a7e_1
   - prometheus-cpp=1.3.0=h0967b3e_0
   - prometheus_client=0.21.1=pyhd8ed1ab_0
@@ -287,6 +294,7 @@ dependencies:
   - readline=8.2=h1d1bf99_2
   - referencing=0.36.2=pyh29332c3_0
   - requests=2.32.3=pyhd8ed1ab_1
+  - retrying=1.3.4=pyhd8ed1ab_0
   - rfc3339-validator=0.1.4=pyhd8ed1ab_1
   - rfc3986-validator=0.1.1=pyh9f0ad1d_0
   - rpds-py=0.24.0=py313hb5fa170_0
@@ -318,6 +326,7 @@ dependencies:
   - tornado=6.4.2=py313h90d716c_0
   - traitlets=5.14.3=pyhd8ed1ab_1
   - traittypes=0.2.1=pyh9f0ad1d_2
+  - trove-classifiers=2025.5.1.12=pyhd8ed1ab_0
   - types-python-dateutil=2.9.0.20241206=pyhd8ed1ab_0
   - typing-extensions=4.13.2=h0e9735f_0
   - typing_extensions=4.13.2=pyh29332c3_0
@@ -346,20 +355,19 @@ dependencies:
   - zstd=1.5.7=h6491c7d_2
   - pip:
       - ansi2html==1.9.2
-      - blinker==1.9.0
       - chart-studio==1.1.0
       - dash==3.0.1
       - flask==3.0.3
       - isodate==0.7.2
-      - itsdangerous==2.2.0
       - jupyter-dash==0.4.2
       - kaleido==0.2.1
       - lxml==5.3.2
       - meteostat==1.6.8
       - noaa-coops==0.4.0
+      - pwlf==2.5.1
       - requests-file==2.1.0
       - requests-toolbelt==1.0.0
-      - retrying==1.3.4
+      - ruptures==1.1.9
       - standard-precip==1.0
       - voila==0.5.8
       - websockets==15.0.1

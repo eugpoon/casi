@@ -1,265 +1,129 @@
-'''
-terrible. lotta redundant code
-'''
+"""
+Interactive dashboards for visualizing compound event data using CMIP6 ensemble means.
 
-import os
-import json
-import warnings
-import pandas as pd
-from jupyter_dash import JupyterDash
-from dash import dcc, html, Input, Output
-import plotly.graph_objects as go
+Usage:
+    Run in a Jupyter Notebook to explore time series, severity, and threshold-based metrics.
+"""
+
+import pandas as pd, json, ipywidgets as widgets
+from IPython.display import display, clear_output
 from plot import Plot
 
-warnings.filterwarnings('ignore')
+# Load ensemble raw input and processed compound event results
+mme_raw = pd.read_parquet('../data/compound_mme_raw.parquet')
+mme_results = pd.read_parquet('../data/compound_mme_results.parquet')
 
-##################################################
-##                 Initialize                   ##
-##################################################
-with open('../data/events_vars.json', 'r') as file:
-    VAR = json.load(file)
+# Load event configuration (thresholds, active months, etc.)
+with open('../data/compound_events.json') as f:
+    VAR = json.load(f)
 
-PATH = '../data/compound_results'
+metric_titles = lambda e: {
+    '_day_total': f'Total {e} Days',
+    '_event_total': f'Total {e}',
+    '_sequence_total': f'Total {e} Sequences',
+    '_duration_mean': f'Average {e} Duration',
+    '_duration_max': f'Max {e} Duration'
+}
 
-def load_data_files():
-    '''Load data files into DataFrames'''
-    files = sorted([os.path.join(PATH, f) for f in os.listdir(PATH) if f.endswith(('.csv', '.parquet'))])
-    
-    return {'var_aggs': {'_'.join(os.path.basename(f).split('_')[:2]): pd.read_csv(f) 
-                        for f in files if '_variables.csv' in f},
-            'metric_aggs': {'_'.join(os.path.basename(f).split('_')[:2]): pd.read_csv(f)
-                           for f in files if '_metrics' in f},
-            'daily_aggs': {'_'.join(os.path.basename(f).split('_')[:2]): pd.read_parquet(f)
-                          for f in files if '_daily.parquet' in f}}
+# Styled button widget
+def base_button(desc): 
+    return widgets.Button(description=desc, layout=widgets.Layout(width='97%'),
+                          style=dict(button_color='#525cb2ff', font_weight='bold', text_color='white'))
 
-def metric_titles(event):
-    return {'_day_total': f'Total {event} Days ',
-            '_event_total': f'Total {event} ',
-            '_sequence_total': f'Total {event} Sequences ',
-            '_duration_mean': f'Average {event} Duration ',
-            '_duration_max': f'Max {event} Duration '}
+# Dashboard 1: Time series of climate variables
+def dashboard_1():
+    center, time, timeagg, modelagg = [widgets.Dropdown(options=opt, description=desc) for opt, desc in [
+        (mme_raw['center'].unique(), 'Center:'), 
+        (['Yearly', 'Monthly'], 'Time:'), 
+        (['mean', 'median', 'sum'], 'Time Agg:'), 
+        (['mean', 'median'], 'Model Agg:')
+    ]]
+    months = widgets.SelectMultiple(options=[str(i) for i in range(1, 13)], value=[str(i) for i in range(1, 13)], description='Months:')
+    error = widgets.ToggleButton(value=False, description='Show Error Bars', button_style='info', layout=widgets.Layout(width='97%'), style={'text_color': 'white'})
+    out, btn = widgets.Output(), base_button("Generate/Update Plot")
 
-def variable_titles(event, var):
-    return {'spi': (f'Average SPI ({var[event]['scale']} Day Accumulation; gamma_n={var[event]['gamma_n']})'),
-            'tasmax': 'Average Max Temperature',
-            'pr': (f'Average Precipitation ({var['CFE']['scale']} Day Accumulation)'
-                  if event == 'CFE' else 'Average Precipitation'),
-            'rzsm': 'Average Root Zone Soil Moisture'}
+    def update(_=None):
+        with out:
+            clear_output(wait=True)
+            df = mme_raw[mme_raw['center'] == center.value]
+            if df.empty: return print("No data available.")
+            m = [int(i) for i in months.value]
+            df = df[df['date'].dt.month.isin(m)].assign(date=df['date'].dt.to_period(time.value[0]).dt.to_timestamp())
+            df = df.groupby(['center', 'variable', 'ssp', 'date']).agg(timeagg.value).reset_index()
+            Plot(center=center.value, months=m, var_title='', var='',
+                 title=f'{center.value} – {time.value} {timeagg.value.title()} of Ensemble {modelagg.value.title()}'
+            ).time_series(df, agg=modelagg.value, error_bar=error.value).show()
 
-##################################################
-##              Variable Analysis               ##
-##################################################
-class VariableAnalysis:
-    def __init__(self):
-        '''Initialize dashboard with loaded data'''
-        self.data = load_data_files()
-        self.app = JupyterDash(__name__)
-        self._setup_layout()
-        self._register_callbacks()
+    btn.on_click(update)
+    display(widgets.HBox([
+        widgets.VBox([center, error, btn], layout=widgets.Layout(width='33%')),
+        widgets.VBox([modelagg, time, timeagg], layout=widgets.Layout(width='33%')),
+        widgets.VBox([months], layout=widgets.Layout(width='33%'))
+    ]), out)
 
-    def _setup_layout(self):
-        '''Configure dashboard layout'''
-        centers = sorted({f.split('_')[0] for f in self.data['var_aggs'].keys()})
-        
-        self.app.layout = html.Div([html.Div([
-                dcc.Dropdown(id='center-dropdown', options=[{'label': c, 'value': c} for c in centers],
-                    value=centers[0], style={'minWidth': '200px'}),
-                dcc.Dropdown(id='event-dropdown', style={'minWidth': '200px'}),
-                dcc.Dropdown(id='variable-dropdown', style={'minWidth': '200px'}),
-                dcc.Checklist(id='error-bar-checkbox', value=[],
-                    options=[{'label': 'Show Error Bars', 'value': 'show_error'}], style={'marginLeft': '20px'}
-                )
-            ], style={'display': 'flex', 'gap': '5px', 'justifyContent': 'space-between',
-                      'alignItems': 'center'
-            }),
-            dcc.Graph(id='dist-plot'), dcc.Graph(id='time-series-plot')
-        ])
+# Dashboard 2: Severity of a selected compound event using one metric
+def dashboard_2():
+    center, event = [widgets.Dropdown(options=mme_results[col].unique(), description=col.capitalize() + ':') for col in ['center', 'event']]
+    model = widgets.Dropdown(options=['mean', 'median'], description='Model Agg:')
+    metric = widgets.Dropdown(options=list(metric_titles('').keys()), description='Metric:')
+    error, out, btn = widgets.ToggleButton(value=False, description='Show Error Bars', button_style='info', layout=widgets.Layout(width='97%'), style={'text_color': 'white'}), widgets.Output(), base_button("Generate/Update Plot")
 
-    def _register_callbacks(self):
-        '''Register Dash callbacks'''
-        
-        @self.app.callback(
-            [Output('event-dropdown', 'options'), Output('event-dropdown', 'value')],
-            [Input('center-dropdown', 'value')]
-        )
-        def update_event_dropdown(selected_center):
-            events = sorted({k.split('_')[1] for k in self.data['var_aggs'].keys() 
-                             if k.startswith(f'{selected_center}_')})
-            return [{'label': e, 'value': e} for e in events], (events[0] if events else None)
+    def update(_=None):
+        with out:
+            clear_output(wait=True)
+            df = mme_results[(mme_results['center'] == center.value) & (mme_results['event'] == event.value)]
+            if df.empty: return print("No data available.")
+            Plot(center=center.value, months=VAR[event.value]['months'],
+                 var_title=metric_titles(event.value)[metric.value], var=metric.value,
+                 title=f'{center.value} – {model.value.title()} {metric_titles(event.value)[metric.value]} Per Year'
+            ).severity(df, agg=model.value, error_bar=error.value).show()
 
-        @self.app.callback(
-            [Output('variable-dropdown', 'options'), Output('variable-dropdown', 'value')],
-            [Input('center-dropdown', 'value'), Input('event-dropdown', 'value')]
-        )
-        def update_variable_dropdown(center, event):
-            if not center or not event:
-                return [], None
-            try:
-                variables = sorted({col.split('_')[-1] 
-                    for col in self.data['var_aggs'][f'{center}_{event}'].columns  if '_' in col})
-                return [{'label': v, 'value': v} for v in variables], (variables[0] if variables else None)
-            except KeyError:
-                return [], None
+    btn.on_click(update)
+    display(widgets.HBox([
+        widgets.VBox([error, btn], layout=widgets.Layout(width='33%')),
+        widgets.VBox([center, event], layout=widgets.Layout(width='33%')),
+        widgets.VBox([model, metric], layout=widgets.Layout(width='33%'))
+    ]), out)
 
-        @self.app.callback(
-            [Output('dist-plot', 'figure'), Output('time-series-plot', 'figure')],
-            [Input('center-dropdown', 'value'), Input('event-dropdown', 'value'),
-             Input('variable-dropdown', 'value'), Input('error-bar-checkbox', 'value')]
-        )
-        def update_plots(center, event, variable, error_bar):
-            if None in [center, event, variable]:
-                return go.Figure(), go.Figure()
-            try:
-                data = self.data['var_aggs'][f'{center}_{event}']
-                p = Plot(center, VAR[event]['months'], variable_titles(event, VAR)[variable], f'_{variable}')
-                return p.distribution(data), p.time_series(data, bool(error_bar))
-            except (KeyError, TypeError) as e:
-                return go.Figure(), go.Figure()
+# Dashboard 3: Compare multiple metrics for one event and threshold level
+def dashboard_3():
+    center = widgets.Dropdown(options=mme_results['center'].unique(), description='Center:')
+    event = widgets.Dropdown(options=mme_results['event'].unique(), description='Event:')
+    threshold = widgets.Dropdown(description='Threshold:')
+    model = widgets.Dropdown(options=['mean', 'median'], description='Model Agg:')
+    metric = widgets.Dropdown(options=list(metric_titles('').keys()), description='Metric:')
+    btn, out = base_button("Generate/Update Plot"), widgets.Output()
 
-    def run(self):
-        self.app.run(mode='inline', port=8050, jupyter_height=700, jupyter_width='100%')
+    def update_thresh(*_):
+        thresholds = mme_results[mme_results['event'] == event.value]['threshold'].unique()
+        threshold.options = thresholds
+        if thresholds.size > 0:
+            threshold.value = thresholds[0]
 
-##################################################
-##              Severity Analysis               ##
-##################################################
-class SeverityAnalysis:
-    def __init__(self):
-        '''Initialize metric analysis dashboard'''
-        self.data = load_data_files()
-        self.app = JupyterDash(__name__)
-        self.metric_vars = list(metric_titles('').keys())
-        self._setup_layout()
-        self._register_callbacks()
+    event.observe(update_thresh, names='value')
+    update_thresh()  # initialize on first load
 
-    def _setup_layout(self):
-        '''Configure dashboard layout'''
-        centers = sorted({f.split('_')[0] for f in self.data['metric_aggs'].keys()})
-        
-        self.app.layout = html.Div([html.Div([
-                dcc.Dropdown(id='center-dropdown', options=[{'label': c, 'value': c} for c in centers],
-                    value=centers[0], style={'minWidth': '200px'}),
-                dcc.Dropdown(id='event-dropdown', style={'minWidth': '200px'}),
-                dcc.Dropdown(id='threshold-dropdown', style={'minWidth': '200px'}),
-                dcc.Dropdown(id='variable-dropdown',options=[{'label': v, 'value': v} for v in self.metric_vars],
-                    value=self.metric_vars[0],style={'minWidth': '200px'}
-                ),
-                dcc.Checklist(id='error-bar-checkbox', value=[],
-                    options=[{'label': 'Show Error Bars', 'value': 'show_error'}], style={'marginLeft': '20px'})
-            ], style={'display': 'flex', 'gap': '5px', 'justifyContent': 'space-between', 'alignItems': 'center'
-            }),
-            dcc.Graph(id='dist-plot'), dcc.Graph(id='time-series-plot')
-        ])
+    def update(_=None):
+        with out:
+            clear_output(wait=True)
+            df = mme_results[
+                (mme_results['center'] == center.value) &
+                (mme_results['event'] == event.value) &
+                (mme_results['threshold'] == threshold.value)
+            ]
+            if df.empty:
+                print("No data available.")
+                return
+            title = f'{center.value} – {model.value.title()} {metric_titles(event.value)[metric.value]} Per Year'
+            Plot(center=center.value, months=VAR[event.value]['months'],
+                 var_title=metric_titles(event.value)[metric.value],
+                 var=metric.value,
+                 title=title
+            ).metric_comp(df, metrics=metric_titles(event.value), agg=model.value).show()
 
-    def _register_callbacks(self):
-        '''Register Dash callbacks for metric analysis'''
-        
-        @self.app.callback(
-            [Output('event-dropdown', 'options'), Output('event-dropdown', 'value')],
-            [Input('center-dropdown', 'value')]
-        )
-        def update_event_dropdown(selected_center):
-            events = sorted({k.split('_')[1] for k in self.data['metric_aggs'].keys() 
-                           if k.startswith(f'{selected_center}_')})
-            return [{'label': e, 'value': e} for e in events], (events[0] if events else None)
-
-        @self.app.callback(
-            [Output('threshold-dropdown', 'options'), Output('threshold-dropdown', 'value')],
-            [Input('center-dropdown', 'value'), Input('event-dropdown', 'value')]
-        )
-        def update_threshold_dropdown(center, event):
-            if not center or not event:
-                return [], None
-            try:
-                thres = sorted(self.data['metric_aggs'][f'{center}_{event}'].threshold.unique())
-                return [{'label': str(t), 'value': t} for t in thres], (thres[0] if thres else None)
-            except KeyError:
-                return [], None
-
-        @self.app.callback(
-            [Output('dist-plot', 'figure'), Output('time-series-plot', 'figure')],
-            [Input('center-dropdown', 'value'), Input('event-dropdown', 'value'),
-             Input('threshold-dropdown', 'value'), Input('variable-dropdown', 'value'),
-             Input('error-bar-checkbox', 'value')]
-        )
-        def update_plots(center, event, threshold, variable, error_bar):
-            if None in [center, event, threshold, variable]:
-                return go.Figure(), go.Figure()
-            try:
-                data = self.data['metric_aggs'][f'{center}_{event}']
-                filtered_data = data[data.threshold == threshold].drop(columns='threshold')
-                titles = metric_titles(event)
-                p = Plot(center, VAR[event]['months'], titles[variable], variable)
-                return p.distribution(filtered_data, threshold=threshold), p.severity(data, bool(error_bar))
-            except (KeyError, TypeError) as e:
-                return go.Figure(), go.Figure()
-
-    def run(self):
-        self.app.run(mode='inline', port=8051, jupyter_height=1200, jupyter_width='100%')
-
-##################################################
-##             Metric Comparison              ##
-##################################################
-class MetricComparison:
-    def __init__(self):
-        '''Initialize metric analysis dashboard'''
-        self.data = load_data_files()
-        self.app = JupyterDash(__name__)
-        self._setup_layout()
-        self._register_callbacks()
-
-    def _setup_layout(self):
-        '''Configure dashboard layout'''
-        centers = sorted({f.split('_')[0] for f in self.data['metric_aggs'].keys()})
-        
-        self.app.layout = html.Div([html.Div([
-                dcc.Dropdown(id='center-dropdown', options=[{'label': c, 'value': c} for c in centers],
-                    value=centers[0], style={'minWidth': '200px'}),
-                dcc.Dropdown(id='event-dropdown', style={'minWidth': '200px'}),
-                dcc.Dropdown(id='threshold-dropdown', style={'minWidth': '200px'}),                
-            ], style={'display': 'flex', 'gap': '5px', 'justifyContent': 'space-between', 'alignItems': 'center'
-            }),
-            dcc.Graph(id='time-series-plot')
-        ])
-
-    def _register_callbacks(self):
-        '''Register Dash callbacks for metric analysis'''
-        
-        @self.app.callback(
-            [Output('event-dropdown', 'options'), Output('event-dropdown', 'value')],
-            [Input('center-dropdown', 'value')]
-        )
-        def update_event_dropdown(selected_center):
-            events = sorted({k.split('_')[1] for k in self.data['metric_aggs'].keys() 
-                           if k.startswith(f'{selected_center}_')})
-            return [{'label': e, 'value': e} for e in events], (events[0] if events else None)
-
-        @self.app.callback(
-            [Output('threshold-dropdown', 'options'), Output('threshold-dropdown', 'value')],
-            [Input('center-dropdown', 'value'), Input('event-dropdown', 'value')]
-        )
-        def update_threshold_dropdown(center, event):
-            if not center or not event:
-                return [], None
-            try:
-                thres = sorted(self.data['metric_aggs'][f'{center}_{event}'].threshold.unique())
-                return [{'label': str(t), 'value': t} for t in thres], (thres[0] if thres else None)
-            except KeyError:
-                return [], None
-
-        @self.app.callback(
-            Output('time-series-plot', 'figure'), [Input('center-dropdown', 'value'), 
-            Input('event-dropdown', 'value'), Input('threshold-dropdown', 'value')]
-        )
-        def update_plots(center, event, threshold):
-            if None in [center, event, threshold]:
-                return go.Figure()
-            try:
-                data = self.data['metric_aggs'][f'{center}_{event}']
-                filtered_data = data[data.threshold == threshold].drop(columns='threshold')
-                p = Plot(center, VAR[event]['months'], '', '')
-                return p.metric_comp(filtered_data, metric_titles(event))
-            except (KeyError, TypeError) as e:
-                return go.Figure()
-
-    def run(self):
-        self.app.run(mode='inline', port=8052, jupyter_height=800, jupyter_width='100%')
+    btn.on_click(update)
+    display(widgets.HBox([
+        widgets.VBox([center, btn], layout=widgets.Layout(width='33%')),
+        widgets.VBox([event, threshold], layout=widgets.Layout(width='33%')),
+        widgets.VBox([model, metric], layout=widgets.Layout(width='33%'))
+    ]), out)

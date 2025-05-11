@@ -157,7 +157,7 @@ class SPI():
         # print(f'--> filtered: {min(filtered.index.date)} to {max(filtered.index.date)}')
         # print(f'--> base: {base_years[0]} to {base_years[1]}')
 
-        freq_map = {'D': '%m-%d', 'M': '%m'}
+        freq_map = {'D': '%m-%d'}#, 'M': '%m'}
         if freq not in freq_map:
             raise AttributeError(f'{freq} not one of [M, D]')
         filtered[freq] = filtered.index.strftime(freq_map[freq])
@@ -170,15 +170,13 @@ class SPI():
         
         dfs = []
         for j in freq_range:
-            precip = filtered.loc[(filtered.index.year >= spi_years[0]) & 
-                                  (filtered[freq] == j)].drop(columns=freq).dropna()
+            precip = filtered.loc[(filtered.index.year >= spi_years[0]) & (filtered[freq] == j)].drop(columns=freq).dropna()
 
             # Fit distribution using only baseline period data
             baseline_data = self.extract_days(filtered, j, gamma_n).dropna()
-            baseline_data = baseline_data[(baseline_data.index.year >= base_years[0]) & 
-                                          (baseline_data.index.year <= base_years[1])]
-            params_df = self.fit_distribution(baseline_data.drop(columns=freq), dist_type, 
-                                              fit_type, **dist_kwargs)
+            baseline_data = baseline_data[(baseline_data.index.year >= base_years[0]) & (baseline_data.index.year <= base_years[1])]
+            params_df = self.fit_distribution(baseline_data.drop(columns=freq), dist_type, fit_type, **dist_kwargs)
+            
             # Calculate SPI
             spi = self.cdf_to_ppf(precip, params_df)
             spi.columns = column
