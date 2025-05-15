@@ -91,7 +91,6 @@ def dashboard_3():
     event = widgets.Dropdown(options=mme_results['event'].unique(), description='Event:')
     threshold = widgets.Dropdown(description='Threshold:')
     model = widgets.Dropdown(options=['mean', 'median'], description='Model Agg:')
-    metric = widgets.Dropdown(options=list(metric_titles('').keys()), description='Metric:')
     btn, out = base_button("Generate/Update Plot"), widgets.Output()
 
     def update_thresh(*_):
@@ -106,24 +105,18 @@ def dashboard_3():
     def update(_=None):
         with out:
             clear_output(wait=True)
-            df = mme_results[
-                (mme_results['center'] == center.value) &
-                (mme_results['event'] == event.value) &
-                (mme_results['threshold'] == threshold.value)
-            ]
+            df = mme_results[(mme_results['center'] == center.value) & (mme_results['event'] == event.value) &
+                             (mme_results['threshold'] == threshold.value)]
             if df.empty:
                 print("No data available.")
                 return
-            title = f'{center.value} – {model.value.title()} {metric_titles(event.value)[metric.value]} Per Year'
-            Plot(center=center.value, months=VAR[event.value]['months'],
-                 var_title=metric_titles(event.value)[metric.value],
-                 var=metric.value,
-                 title=title
-            ).metric_comp(df, metrics=metric_titles(event.value), agg=model.value).show()
+            title = f'{center.value} – {model.value.title()} Per Year'
+            Plot(center=center.value, months=VAR[event.value]['months'], var_title='', var='', title=title
+                ).metric_comp(df, metrics=metric_titles(event.value), agg=model.value).show()
 
     btn.on_click(update)
     display(widgets.HBox([
-        widgets.VBox([center, btn], layout=widgets.Layout(width='33%')),
-        widgets.VBox([event, threshold], layout=widgets.Layout(width='33%')),
-        widgets.VBox([model, metric], layout=widgets.Layout(width='33%'))
+        widgets.VBox([btn], layout=widgets.Layout(width='33%')),
+        widgets.VBox([center, event], layout=widgets.Layout(width='33%')),
+        widgets.VBox([model, threshold], layout=widgets.Layout(width='33%'))
     ]), out)

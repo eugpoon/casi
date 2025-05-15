@@ -34,15 +34,16 @@ def set_thresholds(df):
         print(event)
         rule, base_years = config['threshold'][0], config['base_years']
         dd = df.copy()
-        if config.get('months'):
-            dd = df[df['date'].dt.month.isin(config['months'])]
+        
+        months = config.get('months', None)
+        month_str = str(months) if months else None
+        if months:
+            dd = df[df['date'].dt.month.isin(months)]
 
         for var, t in rule.items():
             if t['type'] != 'perc':
                 continue
             dd_ = dd[(dd['variable'] == var)].copy()
-
-            # Loop over each SSP scenario
             for ssp in sorted(filter(lambda x: 'ssp' in x, dd_['ssp'].unique())):
                 # Filter for historical + target SSP and base year window
                 subset = (dd_[(dd_.ssp.str.contains(f'{ssp}|historical')) & (dd_['date'].dt.year.between(*base_years))]
@@ -51,14 +52,14 @@ def set_thresholds(df):
                     continue
                 
                 # Skip percentiles already computed
-                key = (var, str(base_years), ssp)
+                key = (var, str(base_years), ssp, month_str)
                 v_remain = list(set(t['values']) - computed.get(key, set()))
                 if not v_remain:
                     continue
                 
                 # Compute quantiles per center
                 subset = subset.groupby('center').quantile(v_remain).reset_index().rename(columns={'level_1': 'percentile'})
-                subset['base'], subset['ssp'], subset['variable'] = str(base_years), ssp, var
+                subset['base'], subset['ssp'], subset['variable'], subset['months'] = str(base_years), ssp, var, month_str
 
                 results.append(subset)
                 computed.setdefault(key, set()).update(v_remain)
@@ -74,7 +75,7 @@ if __name__ == '__main__':
 
     df = pd.read_parquet(args.input)
 
-    cols = ['center', 'variable', 'base' ,'ssp', 'percentile']
+    cols = ['center', 'variable', 'base' ,'ssp', 'percentile', 'months']
     thresholds_df = set_thresholds(df)
     thresholds_df = thresholds_df[cols + sorted(thresholds_df.columns.difference(cols))].sort_values(cols).drop_duplicates()
 

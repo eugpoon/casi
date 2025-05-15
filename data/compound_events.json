@@ -17,7 +17,7 @@
     "base_years": [1981, 2020],
     "threshold": [
       {
-        "spi": { "type": "fixed", "op": ">", "values": [-1, -2] },
+        "spi": { "type": "fixed", "op": ">", "values": [1, 2] },
         "tasmax": { "type": "fixed", "op": ">", "values": [32.22222222222222] }
       },
       true

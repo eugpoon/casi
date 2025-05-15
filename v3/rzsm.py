@@ -11,11 +11,15 @@ import argparse
 import zipfile
 from io import TextIOWrapper
 
-MODELS = {i: name for i, name in enumerate([
-            'ACCESS-CM2', 'ACCESS-ESM1-5', 'CESM2', 'CESM2-WACCM', 'CMCC-CM2-SR5', 'CMCC-ESM2', 'CNRM-CM6-1', 'CNRM-ESM2-1', 
-            'EC-Earth3', 'FGOALS-g3','GFDL-CM4', 'GFDL-CM4_gr2', 'GFDL-ESM4', 'GISS-E2-1-G', 'IITM-ESM', 'INM-CM4-8', 'INM-CM5-0', 
-            'KACE-1-0-G', 'MIROC-ES2L', 'MPI-ESM1-2-HR', 'MPI-ESM1-2-LR', 'MRI-ESM2-0', 'NorESM2-LM', 'NorESM2-MM', 'TaiESM1'
-], start=1)}
+MODELS = {
+        1: 'ACCESS-CM2', 2: 'ACCESS-ESM1-5', 3: 'CESM2', 4: 'CESM2-WACCM', 
+        5: 'CMCC-CM2-SR5', 6: 'CMCC-ESM2', 7: 'CNRM-CM6-1', 8: 'CNRM-ESM2-1', 
+        9: 'EC-Earth3', 10: 'FGOALS-g3', 11: 'GFDL-CM4', 12: 'GFDL-CM4_gr2', 
+        13: 'GFDL-ESM4', 14: 'GISS-E2-1-G', 15: 'IITM-ESM', 16: 'INM-CM4-8', 
+        17: 'INM-CM5-0', 18: 'KACE-1-0-G', 19: 'MIROC-ES2L', 20: 'MPI-ESM1-2-HR', 
+        21: 'MPI-ESM1-2-LR', 22: 'MRI-ESM2-0', 23: 'NorESM2-LM', 24: 'NorESM2-MM', 
+        25: 'TaiESM1'
+    }
 
 def read_file(f, name, is_zip=False):
     '''Read a .dat file into a DataFrame with datetime index.'''
@@ -29,7 +33,8 @@ def process_file(file_name, open_fn, center_dfs):
     center, model_idx = parts[1], int(parts[2].split('.')[0])
     model = MODELS.get(model_idx, f'Model_{model_idx}')
     df = read_file(open_fn(file_name), model, is_zip=callable(open_fn))
-    center_dfs[center] = pd.merge(center_dfs.get(center, df.reindex([])), df, left_index=True, right_index=True, how='outer')
+    if len(df.dropna()) > 1:
+        center_dfs[center] = pd.concat([center_dfs.get(center, pd.DataFrame(index=df.index)), df], axis=1)
 
 def main():
     parser = argparse.ArgumentParser(description='Process RZSM .dat files or ZIPs into daily CSVs.')

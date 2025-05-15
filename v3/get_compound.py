@@ -31,8 +31,9 @@ def generate_thresholds(events, raw, thresholds_df, config):
     results, combo = {}, {}
 
     for e in events:
-        threshold, base = config[e]['threshold'], str(config[e]['base_years'])
+        threshold, base, months = config[e]['threshold'], str(config[e]['base_years']), config[e].get('months', None)
         specs = threshold[0]
+        month_str = str(months) if months else ''
         raw_copy = raw.copy()
 
         if e == 'CFE': # calculate 7 day precip accumulation for CFE
@@ -40,6 +41,9 @@ def generate_thresholds(events, raw, thresholds_df, config):
             raw_copy.loc[mask, cols] = (raw_copy[mask].groupby(['center', 'ssp'])
                 .apply(lambda g: g.set_index('date')[cols].rolling(7).sum().reset_index(drop=True), include_groups=False).values)
 
+        if months:
+            raw_copy = raw_copy[raw_copy['date'].dt.month.isin(months)]
+            
         # Generate all threshold combinations for compound events
         value_lists = [spec['values'] for spec in specs.values()]
         if threshold[1]:  # Product of values
@@ -69,7 +73,8 @@ def generate_thresholds(events, raw, thresholds_df, config):
                     sub[cols] = sub_comp.where(~original_nan_mask)
 
                 elif spec['type'] == 'perc':
-                    p = thresholds_df[(thresholds_df.variable == var) & (thresholds_df.percentile == v) & (thresholds_df.base == base)]
+                    p = thresholds_df[(thresholds_df.variable == var) & (thresholds_df.percentile == v) & (thresholds_df.base == base) &
+                                      (thresholds_df.months.fillna('')==month_str)]
                     for c, s in p[['center', 'ssp']].drop_duplicates().values:
                         pc = p[(p.center == c) & (p.ssp == s)][cols]
                         rc_idx = sub[(sub.center == c) & (sub.ssp.str.contains(f'{s}|historical'))].index
@@ -100,7 +105,9 @@ def total_sequence(s):
 def max_duration(s):
     """Return max duration of consecutive 1s (event days)."""
     if s.isna().all(): return np.nan
-    return (s * (s.groupby((s != s.shift()).cumsum()).cumcount() + 1)).max() if (s == 1).sum() > 1 else 0
+    # return (s * (s.groupby((s != s.shift()).cumsum()).cumcount() + 1)).max() if (s == 1).sum() > 1 else 0
+    result = (s * (s.groupby((s != s.shift()).cumsum()).cumcount() + 1)).max()
+    return result if result > 1 else 0
     
 def mean_duration(s):
     """Return mean duration of event sequences > 1 day."""
@@ -117,6 +124,7 @@ def compute_compound(results, combo):
         for threshold in thresholds:
             # Match common index and columns
             dfs = [results[t] for t in threshold.split('_')]
+            
             common_idx = reduce(lambda x, y: x.intersection(y), [df.index for df in dfs])
             common_cols = set.intersection(*[set(df.columns) for df in dfs])
             dfs = [df.loc[common_idx, sorted(common_cols)] for df in dfs]
@@ -127,11 +135,11 @@ def compute_compound(results, combo):
             ones_count = np.sum(arr == 1, axis=0)
             compound_vals = np.where(valid_count < 2, np.nan, (ones_count >= 2).astype(float))
 
-            df_out = pd.DataFrame(compound_vals, index=dfs[0].index, columns=dfs[0].columns)
-            df_out_reset = df_out.reset_index()
-            df_out_reset['date'] = df_out_reset['date'].dt.year
-            grouped = df_out_reset.groupby(['center', 'ssp', 'date'])
-
+            df_out = pd.DataFrame(compound_vals, index=dfs[0].index, columns=dfs[0].columns).reset_index()
+            
+            df_out['date'] = df_out['date'].dt.year
+            grouped = df_out.groupby(['center', 'ssp', 'date'])
+            
             # Calculate metrics
             result = pd.concat([
                 grouped.sum(min_count=1).add_suffix('_day_total'),
